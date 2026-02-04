@@ -29,17 +29,19 @@
 //! ## Publisher
 //!
 //! This is the recommended way of working with [`tism`] for publisher processes, it requires that
-//! `T` be nothing but [`Sized`] (for interoperability with C you must make your type with
+//! `T` be nothing but [`Sized`] (for interoperability with C or Python you must make your type with
 //! `#[repr(C)]`).
 //!
 //! ```
 //! let mut my_shm = tism::create("shm_owned_example", 0).unwrap();
 //!
-//! if let Ok(mut write_locked_shm) = my_shm.write_lock() {
+//! if let Ok(mut lock) = my_shm.write_lock() {
 //!     // by pattern matching on the lock result, we confine our lock to the
 //!     // scope of this if statement
-//!     let x = *write_locked_shm.as_ref();
-//!     *write_locked_shm.as_mut() = x + 1;
+//!     let x = *lock.as_ref();
+//!     *lock.as_mut() = x + 1;
+//!
+//!     assert_eq!(lock.as_ref(), &1);
 //! }
 //! ```
 //!
@@ -53,6 +55,9 @@
 //!
 //! // locking happens internally
 //! my_shm.write(1).unwrap();
+//!
+//! let x = my_shm.read().unwrap();
+//! assert_eq!(x, 1);
 //! ```
 //!
 //! ## Consumer
@@ -68,7 +73,7 @@
 //!
 //! if let Ok(lock) = my_shm.read_lock() {
 //!     let x = *lock.as_ref();
-//!     println!("x = {}", x);
+//!     assert_eq!(lock.as_ref(), &0);
 //! }
 //! ```
 //!
@@ -80,7 +85,7 @@
 //! let mut my_shm = tism::open::<i32>("shm_clone_consumer_example").unwrap();
 //!
 //! let x = my_shm.read().unwrap();
-//! println!("{}", x);
+//! assert_eq!(x, 0);
 //! ```
 //!
 //! [`tism`]: crate
@@ -237,6 +242,7 @@ impl<T> BorrowedSharedMemory<T> {
 /// if let Ok(mut write_locked_shm) = my_shm.write_lock() {
 ///     let x = *write_locked_shm.as_ref();
 ///     *write_locked_shm.as_mut() = x + 1;
+///     assert_eq!(write_locked_shm.as_ref(), &1);
 /// } // Unlock happens here, as `write_locked_shm` drops.
 /// ```
 ///
@@ -292,7 +298,7 @@ impl<'m, T> Drop for WriteLockedSharedMemory<'m, T> {
 ///
 /// if let Ok(read_locked_shm) = my_shm.read_lock() {
 ///     let x = *read_locked_shm.as_ref();
-///     println!("x = {}", x);
+///     assert_eq!(x, 0);
 /// } // Unlock happens here, as `read_locked_shm` drops.
 /// ```
 ///
