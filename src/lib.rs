@@ -406,21 +406,17 @@ impl<T> SharedMemory<T> {
             }
 
             // Divide the memory into a mutex and actual data, then initialize the mutex and data.
-            let mutex = allocation as *mut pthread_rwlock_t;
+            let rw_lock = allocation as *mut pthread_rwlock_t;
             let data = allocation.byte_offset(size_of::<pthread_rwlock_t>() as isize) as *mut T;
 
-            match pthread_rwlock_init(mutex, ptr::null()) {
+            match pthread_rwlock_init(rw_lock, ptr::null()) {
                 0 => (),
                 e => {
                     return Err(io::Error::from_raw_os_error(e));
                 }
             };
 
-            Ok(SharedMemory {
-                fd,
-                rw_lock: mutex,
-                data,
-            })
+            Ok(SharedMemory { fd, rw_lock, data })
         }
     }
 
@@ -465,14 +461,10 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            let mutex = allocation as *mut pthread_rwlock_t;
+            let rw_lock = allocation as *mut pthread_rwlock_t;
             let data = allocation.byte_offset(size_of::<pthread_rwlock_t>() as isize) as *mut T;
 
-            Ok(SharedMemory {
-                fd,
-                rw_lock: mutex,
-                data,
-            })
+            Ok(SharedMemory { fd, rw_lock, data })
         }
     }
 
