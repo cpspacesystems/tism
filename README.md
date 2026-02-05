@@ -67,3 +67,141 @@ if let Ok(lock) = my_shm.read_lock() {
 
 // As with the publisher, the consumer releases its lock when it drops.
 ```
+
+# C
+
+The C API does not have the same automatic cleanup as Rust, as a result only safely supports reading and writing via cloning the memory. If this is undesireable there are "unsafe" function which give manual control over the locks and give back a pointer to the shared memory. If you opt for the unsafe function, which is a valid choice, be _extremely_ careful about your use of the lock, since you can prevent other processes from reading/writing that allocation.
+
+## Including in Your Project
+
+No matter what you do you'll need the header file, located at `tism-c/tism.h`. For TISM the header file will serve as the documentation, so please reference it for specifics on functions (expecially if you opt for manual control over the locks).
+
+From here you could do a few things, the easiest is just including the source file `tism-c/tism.c` in your project, either in your source directory or more cleanly in a directory meant for dependencies. Alternatively you could precompile it, though for a project as lightweight as TISM this probably isn't worth the trouble.
+
+## Using TISM-C
+
+The basic safe workflow mimics the lesser recommended Rust workflow, and for C it is what I recommend you start with.
+
+Be careful with what functions you use, C will automatically cast pointers to other pointers, making it easy to use the wrong function.
+
+### As a Publisher
+
+Some notes on error management here, all TISM functions return a `tism_result_t`, this should be checked for if it is `TISM_OK` or not. In calls to TISM functions here I used a macro `TISM_MBIND`, all this macro does is early return on a non `TISM_OK` return value. Here it would return the TISM error code and you could check that with your shell. This isn't necessarily the best way of error handling, but for propogating errors its very concise and I've come to like it. The usual `if` statements would do just fine too.
+
+```c
+#include "tism.h"
+#include <assert.h>
+
+int main() {
+    int data = 0;
+    tism_owned_shared_memory_t shm;
+
+    /*
+     * `data` is cloned by TISM into the new allocation.
+     */
+
+    TISM_MBIND(tism_create(&shm, "my_shm", &data, sizeof data));
+
+    /*
+     * TISM remembers the size from when you create the allocation,
+     * so you don't need it from now on.
+     */
+
+    int read_data;
+    TISM_MBIND(tism_owned_read(&shm, &read_data));
+
+    assert(read_data == 0);
+
+    int write_data = 12;
+    TISM_MBIND(tism_owned_write(&shm, &write_data));
+
+    TISM_MBIND(tism_owned_read(&shm, &read_data));
+
+    assert(read_data == 12);
+}
+
+```
+
+### As a Consumer
+
+Since we left off our shared memory as being set to twelve with out publisher, lets check that on out consumer.
+
+```c
+#include "tism.h"
+#include <assert.h>
+
+int main() {
+    tism_borrowed_shared_memory_t shm;
+
+    /*
+     * Consumers don't initialize allocations with a value.
+     */
+
+    TISM_MBIND(tism_open(&shm, "my_shm", sizeof(int)));
+
+    /*
+     * TISM remembers the size from when you create the allocation,
+     * so you don't need it from now on.
+     */
+
+    int read_data;
+    TISM_MBIND(tism_borrowed_read(&shm, &read_data));
+
+    assert(read_data == 12);
+}
+
+```
+
+### With the "Unsafe" API
+
+```c
+#include "tism.h"
+#include <assert.h>
+
+typedef struct {
+    int field_1;
+    int field_2;
+} my_data_t;
+
+int main() {
+    my_data_t my_data = {
+        .field_1 = 12,
+        .field_2 = 49,
+    };
+    
+    tism_borrowed_shared_memory_t shm;
+
+    TISM_MBIND(tism_create(&shm, "my_shm", &my_data, sizeof my_data));
+
+    /* Safety third kids ;) */
+
+    my_data_t* shm_data;
+
+    /* TISM will give us a pointer to the shared memory */
+    TISM_MBIND(tism_unsafe_owned_write_lock(&shm, (void**)&shm_data));
+    shm_data->field_1 = 56;
+    TISM_MBIND(tism_unsafe_owned_unlock(&shm, (void**)&shm_data));
+
+    /*
+     * When you pass the pointer to the unlock function it sets it to `NULL` for
+     * a little more safety, you can however pass `NULL` in its place to ommit
+     * this. I'll do that next to to show you.
+     */
+
+    assert(shm_data == NULL);
+
+    /* Return to the danger zone >:3 */
+    TISM_MBIND(tism_unsafe_owned_read_lock(&shm, (void**)&shm_data));
+
+    /* The unsafe API lets you extract, effeciently, single fields like this. */
+    int new_field_1 = shm_data->field_1;
+    TISM_MBIND(tism_unsafe_owned_unlock(&shm, NULL));
+
+    /*
+     * Now, if you pass NULL to the unlock function, you need to pinky promise
+     * TISM that you wont use the pointer, otherwise bad things could happen.
+     */
+
+    assert(new_field_1 == 56);
+}
+```
