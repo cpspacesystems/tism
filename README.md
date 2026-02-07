@@ -205,3 +205,46 @@ int main() {
     assert(new_field_1 == 56);
 }
 ```
+
+# Python
+
+## Including in Your Project
+
+This ones a bit weird. You'll need to clone this repo, then with `tism/tism-py` as your active directory you'll need to run `tism_compile.py` (this file depends on `cffi` and `setuptools`). That script will generate a few files which have the preffix `_tism`, copy these as well as the `tism.py` file into your project. From here you can import and use the `tism.py` file as though it were native Python, and `tism.py` will perform the C foriegn function interface calls on your behalf.
+
+## Using TISM-Py
+
+TISM-Py reguires that users of the module serialize their data to bytes to write and deserialize from bytes to read.
+
+### As a Publisher
+
+```py
+import tism
+
+if __name__ == "__main__":
+    data = "1234"
+    shm = tism.create("my_shm", bytes(data))
+
+    read_data = shm.read()
+    print(read_bytes)
+
+    # Data must be same size
+    shm.write(bytes("5678"))
+    read_data = shm.read()
+    print(read_bytes)
+```
+
+### As a Consumer
+
+```py
+import tism
+
+if __name__ == "__main__":
+    # We give TISM the size of our allocation.
+    shm = tism.open("my_shm", 4)
+
+    # Reads a `bytes` of length 4
+    read_data = shm.read()
+    print(read_bytes)
+```
+
