@@ -13,8 +13,8 @@
  *    TISM granting you less assurances.
  */
 
-#ifndef _TISM
-#define _TISM
+#ifndef _TISM_H
+#define _TISM_H
 
 #include <stddef.h>
 #include <pthread.h>
@@ -175,4 +175,4 @@ tism_result_t _tism_read_lock(struct _tism_shared_memory* shm);
  */
 tism_result_t _tism_unlock(struct _tism_shared_memory* shm);
 
-#endif  /* _TISM */
+#endif  /* _TISM_H */
