@@ -60,6 +60,18 @@ class TismOwnedSharedMemory:
         return bytes(buf)
 
 
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
+
+
+    def __del__(self):
+        lib.tism_owned_close(self.shm)
+
+
 @dataclass
 class TismBorrowedSharedMemory:
     """
@@ -81,6 +93,18 @@ class TismBorrowedSharedMemory:
         _raise_tism_error(lib.tism_owned_read(self.shm, value_ptr))
         buf = ffi.buffer(value_ptr, self.shm.data_len)
         return bytes(buf)
+
+
+    def __enter__(self):
+        return self
+
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
+
+
+    def __del__(self):
+        lib.tism_borrowed_close(self.shm)
 
 
 def create(name: str, init: bytes) -> TismOwnedSharedMemory:
@@ -126,7 +150,7 @@ def _raise_tism_error(err: lib.tism_result_t):
     if err == lib.TISM_OK:
         return
 
-    raise Exception(f"TISM gave error: {e}")
+    raise Exception(f"TISM gave error: {err}")
 
 
 def _create_c_str(s: str):
@@ -135,3 +159,11 @@ def _create_c_str(s: str):
     """
 
     return ffi.new("char[]", s.encode())
+
+
+if __name__ == "__main__":
+    # our data earlier was two bytes
+    with open("my_shm", 2) as shm:
+        read_data = shm.read()
+        print(f"{read_data} should be BEEF")
+    # closes automatically when the with-block ends
