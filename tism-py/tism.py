@@ -160,10 +160,3 @@ def _create_c_str(s: str):
 
     return ffi.new("char[]", s.encode())
 
-
-if __name__ == "__main__":
-    # our data earlier was two bytes
-    with open("my_shm", 2) as shm:
-        read_data = shm.read()
-        print(f"{read_data} should be BEEF")
-    # closes automatically when the with-block ends
