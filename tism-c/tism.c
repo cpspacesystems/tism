@@ -176,6 +176,14 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name, size_t n
 	
 	return TISM_OK;
 }
+
+tism_result_t tism_owned_close(tism_owned_shared_memory_t* shm) {
+	return _tism_close((struct _tism_shared_memory*)shm);
+}
+
+tism_result_t tism_borrowed_close(tism_borrowed_shared_memory_t* shm) {
+	return _tism_close((struct _tism_shared_memory*)shm);
+}
  
 
 tism_result_t tism_owned_write(tism_owned_shared_memory_t* shm, const void* data) {
@@ -267,3 +275,17 @@ tism_result_t _tism_unlock(struct _tism_shared_memory* shm) {
 	}
 }
 
+tism_result_t _tism_close(struct _tism_shared_memory* shm) {
+	if (close(shm->fd) != 0) {
+		switch (errno) {
+			case EINTR: return TISM_INTERUPTED;
+			default:    return TISM_UNKNOWN;
+		}
+	}
+
+	if (munmap(shm->rw_lock, TISM_OVERHEAD + shm->data_len) != 0) {
+		return TISM_UNKNOWN;
+	}
+
+	return TISM_OK;
+}

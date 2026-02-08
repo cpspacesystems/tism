@@ -93,6 +93,22 @@ tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const voi
  */
 tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name, size_t n);
 
+/*
+ * Close the borrowed shared memory and free its resources. This DOES NOT delete the allocation, the
+ * allocation is freed by the operating system when all processes have closed their respective file
+ * descriptors and TISM intentionally does not provide an API for destroying as instance of shared
+ * memory.
+ */
+tism_result_t tism_owned_close(tism_owned_shared_memory_t* shm);
+
+/*
+ * Close the owned shared memory and free its resources. This DOES NOT delete the allocation, the
+ * allocation is freed by the operating system when all processes have closed their respective file
+ * descriptors and TISM intentionally does not provide an API for destroying as instance of shared
+ * memory.
+ */
+tism_result_t tism_borrowed_close(tism_borrowed_shared_memory_t* shm);
+
 
 /*
  * Write to the shared memory allocation by cloning the given data. This function will acquire and
@@ -174,5 +190,10 @@ tism_result_t _tism_read_lock(struct _tism_shared_memory* shm);
  * Release the held lock.
  */
 tism_result_t _tism_unlock(struct _tism_shared_memory* shm);
+
+/*
+ * Close and free resources for this processes handle on the shared memory.
+ */
+tism_result_t _tism_close(struct _tism_shared_memory* shm);
 
 #endif  /* _TISM_H */
