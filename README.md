@@ -1,10 +1,10 @@
 # TOM Interface for Shared Memory
 
-A safe wrapper over Unix and Unix like shared memory APIs. The `tism` API is cleanest in Rust, where its been designed to work nicely with the borrow checker and leverage it to our advantage in order to prevent bad usage of the shared memory.
+A safe wrapper over Unix and Unix-like shared memory APIs. The `tism` API is cleanest in Rust, where its been designed to work nicely with the borrow checker and leverage it to our advantage in order to prevent bad usage of the shared memory.
 
-If best practices are followed `tism` will be perfectly safe in C and Python as well, but missuse in these languages is easier than in Rust. To make sure you're using `tism` correctly see the examples for each language and read the relevant documentation.
+If best practices are followed `tism` will be perfectly safe in C and Python as well, but missuse in these languages is slightly easier than in Rust. To make sure you're using `tism` correctly see the examples for each language and read the relevant documentation.
 
-`tism` allows, for each allocation of shared memory, one publisher and any number of consumers. Consumers cannot read an allocation if a publisher is writing to it, and publishers cannot write to memory which is being read by consumers. You may read from shared memory with multiple consumers at once, but only one publisher at a time (which is all that should exist for a given allocation anyways).
+`tism` allows, for each allocation of shared memory, one publisher and any number of consumers. Consumers cannot read an allocation if a publisher is writing to it, and publishers cannot write to memory which is being read by consumers. You may read from shared memory with multiple consumers at once, but only one publisher may write at a time (which is all that should exist for a given allocation anyways).
 
 # Rust
 
@@ -18,7 +18,7 @@ In `Cargo.toml`, in the `[dependencies]` section, add this line:
 tism = { path = "../tism" }
 ```
 
-This assumes that your project and the `tism` crate are in the same directory, you can adjust the path if you would like to move `tism` relative to your project.
+This assumes that your project and the `tism` crate are in the same directory, you can adjust the path if you would like to move `tism` to another directory relative to your project.
 
 ## Using `tism` in Your Rust Project
 
@@ -52,7 +52,7 @@ if let Ok(mut lock) = my_shm.write_lock() {
 
 ### As a Consuming Process
 
-Using the same style of interacting with our memory as with the publisher we can access our memory as a consumer, in a read-only fashion. Lets suppose the publisher example above doesn't exit before we start out consumer here, then we can open the shared memory it created.
+Using the same style of interacting with our memory as with the publisher we can access our memory as a consumer in a read-only fashion. Lets suppose the publisher example above doesn't exit before we start out consumer here, then we can open the shared memory it created.
 
 ```rust
 let mut my_shm = tism::open::<i32>("my_shared_memory").unwrap();
@@ -70,7 +70,7 @@ if let Ok(lock) = my_shm.read_lock() {
 
 # C
 
-The C API does not have the same automatic cleanup as Rust, as a result only safely supports reading and writing via cloning the memory. If this is undesireable there are "unsafe" function which give manual control over the locks and give back a pointer to the shared memory. If you opt for the unsafe function, which is a valid choice, be _extremely_ careful about your use of the lock, since you can prevent other processes from reading/writing that allocation.
+The C API does not have the same automatic cleanup as Rust, as a result it only safely supports reading and writing via cloning the memory. If this is undesireable there are "unsafe" function which give manual control over the locks and give back a pointer to the shared memory. If you opt for the unsafe function, which is a valid choice, be _extremely_ careful about your use of the lock, since you can very easily prevent other processes from reading/writing that allocation.
 
 ## Including in Your Project
 
@@ -82,7 +82,7 @@ From here you could do a few things, the easiest is just including the source fi
 
 The basic safe workflow mimics the lesser recommended Rust workflow, and for C it is what I recommend you start with.
 
-Be careful with what functions you use, C will automatically cast pointers to other pointers, making it easy to use the wrong function.
+Be careful with what functions you use, C will automatically cast pointers to pointers to other types, making it easy to use the wrong function by mistake.
 
 ### As a Publisher
 
@@ -118,13 +118,15 @@ int main() {
     TISM_MBIND(tism_owned_read(&shm, &read_data));
 
     assert(read_data == 12);
+
+    TISM_MBIND(tism_owned_close(&shm));
 }
 
 ```
 
 ### As a Consumer
 
-Since we left off our shared memory as being set to twelve with out publisher, lets check that on out consumer.
+Lets pretent we didn't call `tism_owned_close` in out publisher code. Since we left off our shared memory as being set to twelve with out publisher, lets check that on out consumer.
 
 ```c
 #include "tism.h"
@@ -148,6 +150,8 @@ int main() {
     TISM_MBIND(tism_borrowed_read(&shm, &read_data));
 
     assert(read_data == 12);
+
+    TISM_MBIND(tism_borrowed_close(&shm));
 }
 
 ```
@@ -169,7 +173,7 @@ int main() {
         .field_2 = 49,
     };
     
-    tism_borrowed_shared_memory_t shm;
+    tism_owned_shared_memory_t shm;
 
     TISM_MBIND(tism_create(&shm, "my_shm", &my_data, sizeof my_data));
 
@@ -203,6 +207,8 @@ int main() {
      */
 
     assert(new_field_1 == 56);
+
+    TISM_MBIND(tism_owned_close(&shm));
 }
 ```
 
