@@ -222,16 +222,19 @@ TISM-Py reguires that users of the module serialize their data to bytes to write
 import tism
 
 if __name__ == "__main__":
-    data = "1234"
-    shm = tism.create("my_shm", bytes(data))
+    data = bytes([0xFF, 0x00])
 
-    read_data = shm.read()
-    print(read_bytes)
+    with create("my_shm", data) as shm:
+        read_data = shm.read()
 
-    # Data must be same size
-    shm.write(bytes("5678"))
-    read_data = shm.read()
-    print(read_bytes)
+        print(f"{data} should be the same as {read_data}")
+
+        shm.write(bytes([0xBE, 0xEF]))
+        read_data = shm.read()
+
+        print(f"Now we have BEEF: {read_data}")
+
+    # closes automatically when the with-block ends
 ```
 
 ### As a Consumer
@@ -240,11 +243,11 @@ if __name__ == "__main__":
 import tism
 
 if __name__ == "__main__":
-    # We give TISM the size of our allocation.
-    shm = tism.open("my_shm", 4)
+    # our data earlier was two bytes
+    with open("my_shm", 2) as shm:
+        read_data = shm.read()
+        print(f"{read_data} should be BEEF")
 
-    # Reads a `bytes` of length 4
-    read_data = shm.read()
-    print(read_bytes)
+    # closes automatically when the with-block ends
 ```
 
