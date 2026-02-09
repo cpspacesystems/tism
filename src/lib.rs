@@ -102,6 +102,9 @@ use libc::{
 };
 use std::{io, path::Path, ptr};
 
+#[cfg(test)]
+mod tests;
+
 /// Create a new shared memory allocaton, which you will own, initialized to the given value of `T`.
 /// If a shared memory allocation by the given name already exists this is not considered an error,
 /// since its possible that we are reaquiring an allocation which we failed to clean up earlier, so
