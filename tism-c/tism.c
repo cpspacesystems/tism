@@ -6,6 +6,9 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+
+#include <stdio.h>
+
 #define TISM_OVERHEAD sizeof(pthread_rwlock_t)
 
 #define CREATE_FLAGS (O_CREAT | O_RDWR | O_TRUNC | O_EXCL)
@@ -133,9 +136,9 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name, size_t n
 	 */
 	 
 #if defined(__APPLE__)
-	shm->fd = shm_open(nonportable_name, O_RDONLY);
+	shm->fd = shm_open(nonportable_name, O_RDWR);
 #elif defined(__linux__)
-	shm->fd = shm_open(nonportable_name, O_RDONLY, 0);
+	shm->fd = shm_open(nonportable_name, O_RDWR, 0);
 #else
 #error "Non Unix or Linux systems no supported"
 #endif
