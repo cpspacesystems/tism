@@ -7,3 +7,4 @@ tism-py/_tism.cpython-314-darwin.so
 tism-py/_tism.o
 tism-py/pyvenv.cfg
 tism-c/tism.o
+tism-c/tests
