@@ -4,9 +4,12 @@ import unittest
 class Tests(unittest.TestCase):
     def test_create(self):
         shm = tism.create("test_create_shm", bytes([128]))
+
         self.assertEqual(bytes([128]), shm.read())
         shm.write(bytes([65]))
         self.assertEqual(bytes([65]), shm.read())
+
+        del shm
 
         
     def test_open(self):
