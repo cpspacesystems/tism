@@ -31,7 +31,7 @@ class TismOwnedSharedMemory:
     which may write to or read from the memory allocation.
     """
 
-    shm: ffi.cdata
+    shm: ffi.CData
 
 
     def write(self, value: bytes):
