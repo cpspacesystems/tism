@@ -40,7 +40,7 @@ class _TismOwnedSharedMemory:
         """
 
         if self._shm.data_size[0] != len(value):
-            raise Exception("Given value is not the same size as allocation")
+            raise RuntimeError("Given value is not the same size as allocation")
 
         value_ptr = ffi.new("char[]", bytes(value))
         _raise_tism_error(lib.tism_owned_write(self._shm, value_ptr))
@@ -107,10 +107,7 @@ def create(name: str, init: bytes) -> _TismOwnedSharedMemory:
     init_ptr = ffi.new("char[]", bytes(init))  # use char[] as void* standin
 
     shm = ffi.new("struct _tism_shared_memory*")
-    err = lib.tism_create(shm, c_str, init_ptr, len(init))
-
-    if err != 0:
-        raise Exception(f"TISM gave error: {err}")
+    _raise_tism_error(lib.tism_create(shm, c_str, init_ptr, len(init)))
 
     return _TismOwnedSharedMemory(shm)
 
@@ -123,10 +120,7 @@ def open(name: str) -> _TismBorrowedSharedMemory:
     c_str = _create_c_str(name)
 
     shm = ffi.new("struct _tism_shared_memory*")
-    err = lib.tism_open(shm, c_str)
-
-    if err != 0:
-        raise Exception(f"TISM gave error: {err}")
+    _raise_tism_error(lib.tism_open(shm, c_str))
 
     return _TismBorrowedSharedMemory(shm)
 
@@ -140,7 +134,7 @@ def _raise_tism_error(err: ffi.CData):
     if err == lib.TISM_OK:
         return
 
-    raise Exception(f"TISM gave error: {err}")
+    raise RuntimeError(f"TISM gave error: {err}")
 
 
 def _create_c_str(s: str):
