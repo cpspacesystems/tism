@@ -3,11 +3,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <unistd.h>
-
-
-#include <stdio.h>
 
 #define TISM_OVERHEAD sizeof(pthread_rwlock_t)
 

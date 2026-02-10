@@ -18,7 +18,7 @@
 
 #include <stddef.h>
 #include <pthread.h>
-#include <sys/posix_shm.h>
+#include <sys/mman.h>
 
 /*
  * Monadic-bind like operation for `tism_result_t`. Returns early if the result is an error, and
@@ -26,7 +26,7 @@
  */
 #define TISM_MBIND(expr) { tism_result_t err = expr; if (err != TISM_OK) { return err; } }
 
-#define TISM_MAX_NAME_LENGTH (PSHMNAMLEN - 1)
+#define TISM_MAX_NAME_LENGTH 30
 
 /*
  * A TISM shared memory allocation which this process has created. Holding this type means that you
