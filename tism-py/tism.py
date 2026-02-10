@@ -18,21 +18,19 @@ bytes will likely just be the raw bytes of the type the allocation is meant to
 store, and Python users should work with their `bytes` as such.
 """
 
-
 from dataclasses import dataclass
 from _tism import ffi, lib
 
 
 @dataclass
-class TismOwnedSharedMemory:
+class _TismOwnedSharedMemory:
     """
     A TISM shared memory allocation which this process has created. Holding an
     instance of this class means that you are the publisher, and the only party
     which may write to or read from the memory allocation.
     """
 
-    shm: ffi.CData
-
+    _shm: ffi.CData
 
     def write(self, value: bytes):
         """
@@ -41,12 +39,11 @@ class TismOwnedSharedMemory:
         so, then unlocks before returning.
         """
 
-        if self.shm.data_len != len(value):
+        if self._shm.data_len != len(value):
             raise Exception("Given value is not the same size as allocation")
 
         value_ptr = ffi.new("char[]", bytes(value))
-        _raise_tism_error(lib.tism_owned_write(self.shm, value_ptr))
-
+        _raise_tism_error(lib.tism_owned_write(self._shm, value_ptr))
 
     def read(self) -> bytes:
         """
@@ -54,34 +51,30 @@ class TismOwnedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self.shm.data_len)
-        _raise_tism_error(lib.tism_owned_read(self.shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self.shm.data_len)
+        value_ptr = ffi.new("char[]", self._shm.data_len)
+        _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
+        buf = ffi.buffer(value_ptr, self._shm.data_len)
         return bytes(buf)
-
 
     def __enter__(self):
         return self
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.__del__()
 
-
     def __del__(self):
-        lib.tism_owned_close(self.shm)
+        lib.tism_owned_close(self._shm)
 
 
 @dataclass
-class TismBorrowedSharedMemory:
+class _TismBorrowedSharedMemory:
     """
     A TISM shared memory allocation which this process has opened, not created.
     Holding an instance of this class means that you are a consumer, and can
     only read from the allocation.
     """
 
-    shm: ffi.CData
-
+    _shm: ffi.CData
 
     def read(self) -> bytes:
         """
@@ -89,25 +82,22 @@ class TismBorrowedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self.shm.data_len)
-        _raise_tism_error(lib.tism_owned_read(self.shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self.shm.data_len)
+        value_ptr = ffi.new("char[]", self._shm.data_len)
+        _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
+        buf = ffi.buffer(value_ptr, self._shm.data_len)
         return bytes(buf)
-
 
     def __enter__(self):
         return self
 
-
     def __exit__(self, exc_type, exc_value, traceback):
         self.__del__()
 
-
     def __del__(self):
-        lib.tism_borrowed_close(self.shm)
+        lib.tism_borrowed_close(self._shm)
 
 
-def create(name: str, init: bytes) -> TismOwnedSharedMemory:
+def create(name: str, init: bytes) -> _TismOwnedSharedMemory:
     """
     Create a new TISM shared memory allocation with the given name and given
     initial data.
@@ -122,10 +112,10 @@ def create(name: str, init: bytes) -> TismOwnedSharedMemory:
     if err != 0:
         raise Exception(f"TISM gave error: {err}")
 
-    return TismOwnedSharedMemory(shm)
+    return _TismOwnedSharedMemory(shm)
 
 
-def open(name: str, size: int) -> TismBorrowedSharedMemory:
+def open(name: str, size: int) -> _TismBorrowedSharedMemory:
     """
     Open an existing shared memory allocation by the given name
     """
@@ -138,7 +128,7 @@ def open(name: str, size: int) -> TismBorrowedSharedMemory:
     if err != 0:
         raise Exception(f"TISM gave error: {err}")
 
-    return TismBorrowedSharedMemory(shm)
+    return _TismBorrowedSharedMemory(shm)
 
 
 def _raise_tism_error(err: ffi.CData):
@@ -159,4 +149,3 @@ def _create_c_str(s: str):
     """
 
     return ffi.new("char[]", s.encode())
-
