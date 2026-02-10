@@ -141,7 +141,7 @@ def open(name: str, size: int) -> TismBorrowedSharedMemory:
     return TismBorrowedSharedMemory(shm)
 
 
-def _raise_tism_error(err: lib.tism_result_t):
+def _raise_tism_error(err: ffi.CData):
     """
     Check our C-style result enum errors into Python exception handling. Raises
     an exception if the given result is not `TISM_OK`.
