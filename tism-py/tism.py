@@ -80,7 +80,7 @@ class TismBorrowedSharedMemory:
     only read from the allocation.
     """
 
-    shm: lib.tism_borrowed_shared_memory_t
+    shm: ffi.CData
 
 
     def read(self) -> bytes:
