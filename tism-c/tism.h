@@ -26,7 +26,14 @@
  */
 #define TISM_MBIND(expr) { tism_result_t err = expr; if (err != TISM_OK) { return err; } }
 
-#define TISM_MAX_NAME_LENGTH 30
+#if defined(__APPLE__)
+#include <sys/posix_shm.h>
+/* minus one for null terminator, minus one for leading slash */
+#define TISM_MAX_NAME_LENGTH (PSHMNAMLEN - 2)
+#elif defined(__linux__)
+/* minux one for null terminator, though length here is arbitrary */
+#define TISM_MAX_NAME_LENGTH 255
+#endif
 
 /*
  * A TISM shared memory allocation which this process has created. Holding this type means that you
