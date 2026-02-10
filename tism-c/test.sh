@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
-gcc tism.c tests.c scrutiny/scrutiny.c -Iscrutiny/scrutiny.h -Itism.h -o tests
+gcc tism.c tests.c scrutiny/scrutiny.c -o tests
 ./tests
