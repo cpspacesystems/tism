@@ -218,6 +218,12 @@ int main() {
 
 This ones a bit weird. You'll need to clone this repo, then with `tism/tism-py` as your active directory you'll need to run `tism_compile.py` (this file depends on `cffi` and `setuptools`). That script will generate a few files which have the preffix `_tism`, copy these as well as the `tism.py` file into your project. From here you can import and use the `tism.py` file as though it were native Python, and `tism.py` will perform the C foriegn function interface calls on your behalf.
 
+If you get an error while running `tism_compile.py`, you might be missing a Python development package. On Ubuntu you can install it with:
+
+```bash
+apt install python3-dev
+```
+
 ## Using TISM-Py
 
 TISM-Py reguires that users of the module serialize their data to bytes to write and deserialize from bytes to read.
