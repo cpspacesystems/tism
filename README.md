@@ -136,10 +136,11 @@ int main() {
     tism_borrowed_shared_memory_t shm;
 
     /*
-     * Consumers don't initialize allocations with a value.
+     * Consumers don't initialize allocations with a value, and understand the
+     * size of the allocation implicitly.
      */
 
-    TISM_MBIND(tism_open(&shm, "my_shm", sizeof(int)));
+    TISM_MBIND(tism_open(&shm, "my_shm"));
 
     /*
      * TISM remembers the size from when you create the allocation,
@@ -255,8 +256,8 @@ if __name__ == "__main__":
 import tism
 
 if __name__ == "__main__":
-    # our data earlier was two bytes
-    with open("my_shm", 2) as shm:
+    with open("my_shm") as shm:
+        # our data earlier was two bytes, so we should expect that here
         read_data = shm.read()
         print(f"{read_data} should be BEEF")
 
