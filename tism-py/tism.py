@@ -39,7 +39,7 @@ class _TismOwnedSharedMemory:
         so, then unlocks before returning.
         """
 
-        if self._shm.data_len != len(value):
+        if self._shm.data_size[0] != len(value):
             raise Exception("Given value is not the same size as allocation")
 
         value_ptr = ffi.new("char[]", bytes(value))
@@ -51,9 +51,9 @@ class _TismOwnedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self._shm.data_len)
+        value_ptr = ffi.new("char[]", self._shm.data_size[0])
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self._shm.data_len)
+        buf = ffi.buffer(value_ptr, self._shm.data_size[0])
         return bytes(buf)
 
     def __enter__(self):
@@ -82,9 +82,9 @@ class _TismBorrowedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self._shm.data_len)
+        value_ptr = ffi.new("char[]", self._shm.data_size[0])
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self._shm.data_len)
+        buf = ffi.buffer(value_ptr, self._shm.data_size[0])
         return bytes(buf)
 
     def __enter__(self):
@@ -115,7 +115,7 @@ def create(name: str, init: bytes) -> _TismOwnedSharedMemory:
     return _TismOwnedSharedMemory(shm)
 
 
-def open(name: str, size: int) -> _TismBorrowedSharedMemory:
+def open(name: str) -> _TismBorrowedSharedMemory:
     """
     Open an existing shared memory allocation by the given name
     """
@@ -123,7 +123,7 @@ def open(name: str, size: int) -> _TismBorrowedSharedMemory:
     c_str = _create_c_str(name)
 
     shm = ffi.new("struct _tism_shared_memory*")
-    err = lib.tism_open(shm, c_str, size)
+    err = lib.tism_open(shm, c_str)
 
     if err != 0:
         raise Exception(f"TISM gave error: {err}")

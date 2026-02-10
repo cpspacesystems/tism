@@ -14,7 +14,7 @@ class Tests(unittest.TestCase):
         
     def test_open(self):
         owner = tism.create("test_open_shm", bytes([0xBE, 0xEF]))
-        borrower = tism.open("test_open_shm", 2)
+        borrower = tism.open("test_open_shm")
 
         self.assertEqual(bytes([0xBE, 0xEF]), borrower.read())
         owner.write(bytes([0xFA, 0xAA]))

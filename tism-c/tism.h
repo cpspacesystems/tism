@@ -55,8 +55,8 @@ typedef struct _tism_shared_memory tism_borrowed_shared_memory_t;
  * Common struct for TISM shared memory. Avoid direct use.
  */
 struct _tism_shared_memory {
-	size_t data_len;
 	int fd;
+	size_t* data_size;
 	pthread_rwlock_t* rw_lock;
 	void* data;
 }; 
@@ -92,13 +92,11 @@ typedef enum {
 tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n);
 
 /*
- * Open a shared memory allocation for reading. This function takes a size which is used to properly
- * map the shared memory.
- *
- * TISM will save the size you give here, and functions which use the
- * `tism_borrowed_shared_memory_t` will not take it as a parameter.
+ * Open a shared memory allocation for reading. This function recovers the size of the allocation
+ * from its file descriptor, and this value is saved an used for all other functions which use a
+ * `tism_borrowed_shared_memory_t`.
  */
-tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name, size_t n);
+tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name);
 
 /*
  * Close the borrowed shared memory and free its resources. This DOES NOT delete the allocation, the

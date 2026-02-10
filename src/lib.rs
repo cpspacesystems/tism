@@ -337,6 +337,9 @@ struct SharedMemory<T> {
     /// File descriptor of the shared memory.
     pub(crate) fd: libc::c_int,
 
+    /// Size of the data allocation.
+    pub(crate) _data_size: *mut libc::size_t,
+
     /// POSIX read/write lock for syncronization.
     pub(crate) rw_lock: *mut pthread_rwlock_t,
 
@@ -347,7 +350,8 @@ struct SharedMemory<T> {
 
 impl<T> SharedMemory<T> {
     /// Net size of the shared memory allocation such that it may contain our data and a mutex.
-    const SHARED_MEMORY_SIZE: usize = size_of::<pthread_rwlock_t>() + size_of::<T>();
+    const SHARED_MEMORY_SIZE: usize =
+        size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>() + size_of::<T>();
 
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation.
@@ -408,9 +412,16 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            // Divide the memory into a mutex and actual data, then initialize the mutex and data.
-            let rw_lock = allocation as *mut pthread_rwlock_t;
-            let data = allocation.byte_offset(size_of::<pthread_rwlock_t>() as isize) as *mut T;
+            // Divide the memory into a size, lock, and actual data, then initialize the lock and
+            // data.
+            let data_size = allocation as *mut libc::size_t;
+            let rw_lock =
+                allocation.byte_offset(size_of::<libc::size_t>() as isize) as *mut pthread_rwlock_t;
+            let data = allocation.byte_offset(
+                size_of::<libc::size_t>() as isize + size_of::<pthread_rwlock_t>() as isize,
+            ) as *mut T;
+
+            *data_size = size_of::<T>();
 
             match pthread_rwlock_init(rw_lock, ptr::null()) {
                 0 => (),
@@ -419,7 +430,12 @@ impl<T> SharedMemory<T> {
                 }
             };
 
-            Ok(SharedMemory { fd, rw_lock, data })
+            Ok(SharedMemory {
+                _data_size: data_size,
+                fd,
+                rw_lock,
+                data,
+            })
         }
     }
 
@@ -464,10 +480,19 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            let rw_lock = allocation as *mut pthread_rwlock_t;
-            let data = allocation.byte_offset(size_of::<pthread_rwlock_t>() as isize) as *mut T;
+            let data_size = allocation as *mut libc::size_t;
+            let rw_lock =
+                allocation.byte_offset(size_of::<libc::size_t>() as isize) as *mut pthread_rwlock_t;
+            let data = allocation.byte_offset(
+                size_of::<libc::size_t>() as isize + size_of::<pthread_rwlock_t>() as isize,
+            ) as *mut T;
 
-            Ok(SharedMemory { fd, rw_lock, data })
+            Ok(SharedMemory {
+                _data_size: data_size,
+                fd,
+                rw_lock,
+                data,
+            })
         }
     }
 
