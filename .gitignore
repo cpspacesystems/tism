@@ -8,3 +8,4 @@ tism-py/_tism.o
 tism-py/pyvenv.cfg
 tism-c/tism.o
 tism-c/tests
+tism-py/__pycache__
