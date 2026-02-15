@@ -35,19 +35,31 @@ And now you can open the file `target/doc/tism/index.html` to view `tism`'s Rust
 There are other ways to use `tism`, I recommend this way as it provides the best possible performance without demanding any extra care from the programmer. To use another method see the Rust crate's documentation.
 
 ```rust
-let mut my_shm = tism::create("my_shared_memory", 0).unwrap();
-
-if let Ok(mut lock) = my_shm.write_lock() {
-    // Now we can treat `lock` as a smart pointer via its `AsRef` and `AsMut`
-    // implementations!
-
-    let x = *lock.as_ref();
-    *lock.as_mut() = x + 1;
-
-    assert_eq!(lock.as_ref(), &1);
+#[repr(C)]
+#[derive(PartialEq, Debug)]
+struct MyData {
+    field_1: i32,
+    field_2: f64,
 }
 
-// When our lock drops out of scope, it unlocks for you!
+let init_data = MyData { field_1: 37, field_2: 3.1415 };
+let mut my_shm = tism::create("my_shm", init_data).unwrap();
+
+// by pattern matching on the lock result, we confine our lock to the
+// scope of this if statement
+if let Ok(mut lock) = my_shm.write_lock() {
+
+    // We can get a reference to our shared data and access individual
+    // fields easily and without copying.
+    let x: &MyData = lock.as_ref();
+    assert_eq!(x.field_1, 37);
+
+    // Since we have a write lock, we can also mutate fields.
+    lock.as_mut().field_2 = 3f64;
+
+    // If we want we can also overwrite or read the entire struct.
+    assert_eq!(lock.as_ref(), &MyData { field_1: 37, field_2: 3f64 });
+}  // When `lock` drops it unlocks!
 ```
 
 ### As a Consuming Process
@@ -55,18 +67,25 @@ if let Ok(mut lock) = my_shm.write_lock() {
 Using the same style of interacting with our memory as with the publisher we can access our memory as a consumer in a read-only fashion. Lets suppose the publisher example above doesn't exit before we start out consumer here, then we can open the shared memory it created.
 
 ```rust
-let mut my_shm = tism::open::<i32>("my_shared_memory").unwrap();
-
-if let Ok(lock) = my_shm.read_lock() {
-    let x = *lock.as_ref();
-
-    // Since we set our value to 1 in the publisher example, we expect it to be
-    // 1 down here too.
-    assert_eq!(lock.as_ref(), &1);
+#[repr(C)]
+#[derive(PartialEq, Debug)]
+struct MyData {
+    field_1: i32,
+    field_2: f64,
 }
 
-// As with the publisher, the consumer releases its lock when it drops.
+// open an existing shared memory allocation
+let mut my_shm = tism::open::<MyData>("my_shm").unwrap();
+
+if let Ok(lock) = my_shm.read_lock() {
+    let x: &MyData = lock.as_ref();
+
+    // our publisher last set `field_2` to 3
+    assert_eq!(lock.as_ref().field_2, 3f64);
+}
 ```
+
+For more details or alternatives see the Rust API documentation, which can be compiled with `cargo doc`.
 
 # C
 

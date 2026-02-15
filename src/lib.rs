@@ -33,31 +33,58 @@
 //! `#[repr(C)]`).
 //!
 //! ```
-//! let mut my_shm = tism::create("shm_owned_example", 0).unwrap();
-//!
-//! if let Ok(mut lock) = my_shm.write_lock() {
-//!     // by pattern matching on the lock result, we confine our lock to the
-//!     // scope of this if statement
-//!     let x = *lock.as_ref();
-//!     *lock.as_mut() = x + 1;
-//!
-//!     assert_eq!(lock.as_ref(), &1);
+//! // For this version we won't need `Clone` or `Copy`
+//! #[repr(C)]
+//! #[derive(PartialEq, Debug)]
+//! struct MyData {
+//!     field_1: i32,
+//!     field_2: f64,
 //! }
+//!
+//! let init_data = MyData { field_1: 37, field_2: 3.1415 };
+//! let mut my_shm = tism::create("shm_owned_example", init_data).unwrap();
+//!
+//! // by pattern matching on the lock result, we confine our lock to the
+//! // scope of this if statement
+//! if let Ok(mut lock) = my_shm.write_lock() {
+//!     // We can get a reference to our shared data and access individual
+//!     // fields easily and without copying.
+//!     let x: &MyData = lock.as_ref();
+//!     assert_eq!(x.field_1, 37);
+//!
+//!     // Since we have a write lock, we can also mutate fields.
+//!     lock.as_mut().field_2 = 3f64;
+//!
+//!     // If we want we can also overwrite or read the entire struct.
+//!     assert_eq!(lock.as_ref(), &MyData { field_1: 37, field_2: 3f64 });
+//! }  // When `lock` drops it unlocks!
+//!
 //! ```
 //!
-//! This way is simpler, but takes ownership of the given value of `T`. If you were to make many
-//! changes in sequence it would rapidly lock and unlock the shared memory. If you make only one
-//! write then this method is perfect, for more complicated application use the method outline in
-//! the previous example.
+//! This next way is simpler, but takes ownership of the given value of `T`. If you were to make
+//! many changes in sequence it would rapidly lock and unlock the shared memory. If you make only
+//! one write then this method is perfect, for more complicated uses the method outlined in the
+//! previous example would be superior.
 //!
 //! ```
-//! let mut my_shm = tism::create("shm_write_onestep_example", 0).unwrap();
+//! // For this version we do need `Clone`
+//! #[repr(C)]
+//! #[derive(Clone, Copy, PartialEq, Debug)]
+//! struct MyData {
+//!     field_1: i32,
+//!     field_2: f64,
+//! }
 //!
-//! // locking happens internally
-//! my_shm.write(1).unwrap();
+//! let init_data = MyData { field_1: 37, field_2: 3.1415 };
+//! let mut my_shm = tism::create("shm_write_onestep_example", init_data).unwrap();
 //!
+//! // locking happens internally, `write` clones the value you give it
+//! my_shm.write(MyData { field_1: 0, field_2: 0f64 }).unwrap();
+//!
+//! // the `read` function clones the contents of the shared memory and gives
+//! // you the cloned value
 //! let x = my_shm.read().unwrap();
-//! assert_eq!(x, 1);
+//! assert_eq!(x, MyData { field_1: 0, field_2: 0f64 });
 //! ```
 //!
 //! ## Consumer
@@ -66,26 +93,42 @@
 //! access to the shared memory, allowing you to more efficiently extract particular fields.
 //!
 //! ```
-//! // Create shared memory so we can open it later :)
-//! let my_shm_owner = tism::create("shm_zerocopy_consumer_example", 0).unwrap();
+//! #[repr(C)]
+//! #[derive(PartialEq, Debug)]
+//! struct MyData {
+//!     field_1: i32,
+//!     field_2: f64,
+//! }
 //!
-//! let mut my_shm = tism::open::<i32>("shm_zerocopy_consumer_example").unwrap();
+//! // Create shared memory so we can open it later :)
+//! let init_data = MyData { field_1: 37, field_2: 3.1415 };
+//! let my_shm_owner = tism::create("shm_zerocopy_consumer_example", init_data).unwrap();
+//!
+//! let mut my_shm = tism::open::<MyData>("shm_zerocopy_consumer_example").unwrap();
 //!
 //! if let Ok(lock) = my_shm.read_lock() {
-//!     let x = *lock.as_ref();
-//!     assert_eq!(lock.as_ref(), &0);
+//!     let x: &MyData = lock.as_ref();
+//!     assert_eq!(lock.as_ref().field_2, 3.1415);
 //! }
 //! ```
 //!
 //! If `T` is [`Clone`] you can also use this simpler method, though it is less efficient:
 //!
 //! ```
-//! let my_shm_owner = tism::create("shm_clone_consumer_example", 0).unwrap();
+//! #[repr(C)]
+//! #[derive(Clone, Copy, PartialEq, Debug)]
+//! struct MyData {
+//!     field_1: i32,
+//!     field_2: f64,
+//! }
 //!
-//! let mut my_shm = tism::open::<i32>("shm_clone_consumer_example").unwrap();
+//! let init_data = MyData { field_1: 37, field_2: 3.1415 };
+//! let my_shm_owner = tism::create("shm_clone_consumer_example", init_data).unwrap();
+//!
+//! let mut my_shm = tism::open::<MyData>("shm_clone_consumer_example").unwrap();
 //!
 //! let x = my_shm.read().unwrap();
-//! assert_eq!(x, 0);
+//! assert_eq!(x, MyData { field_1: 37, field_2: 3.1415 });
 //! ```
 //!
 //! [`tism`]: crate
@@ -370,10 +413,7 @@ impl<T> SharedMemory<T> {
 
         unsafe {
             // Open our shared memory as a file descriptor.
-            #[cfg(target_os = "macos")]
             let c_str = name_bytes.as_ptr() as *const libc::c_char;
-            #[cfg(target_os = "linux")]
-            let c_str = name_bytes.as_ptr() as *const u8;
 
             // Free the shared memory in case it was already allocated.
             let unlink_err = libc::shm_unlink(c_str);
@@ -453,10 +493,7 @@ impl<T> SharedMemory<T> {
         // For some notes on the inner workings here see `SharedMemory::create`.
 
         unsafe {
-            #[cfg(target_os = "macos")]
             let c_str = name_bytes.as_ptr() as *const libc::c_char;
-            #[cfg(target_os = "linux")]
-            let c_str = name_bytes.as_ptr() as *const u8;
 
             #[cfg(target_os = "macos")]
             let fd = shm_open(c_str, O_RDWR);
