@@ -138,15 +138,17 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
+pub mod lazy;
+
+#[cfg(test)]
+mod tests;
+
 use libc::{
     self, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR,
     close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock, pthread_rwlock_t,
     pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
 };
 use std::{io, path::Path, ptr};
-
-#[cfg(test)]
-mod tests;
 
 /// Create a new shared memory allocaton, which you will own, initialized to the given value of `T`.
 /// If a shared memory allocation by the given name already exists this is not considered an error,
