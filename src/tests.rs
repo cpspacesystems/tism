@@ -6,6 +6,7 @@ fn test_create() {
     assert_eq!(0, shm.read().unwrap());
     shm.write(1024).unwrap();
     assert_eq!(1024, shm.read().unwrap());
+    assert_eq!(size_of::<i32>(), shm.allocated_data_size());
 }
 
 #[test]
@@ -15,6 +16,8 @@ fn test_open() {
     assert_eq!(0, borrower.read().unwrap());
     owner.write(1024).unwrap();
     assert_eq!(1024, borrower.read().unwrap());
+    assert_eq!(size_of::<i32>(), owner.allocated_data_size());
+    assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
 }
 
 #[test]
@@ -31,6 +34,9 @@ fn test_read_lock() {
     let rl = borrower.read_lock().unwrap();
     assert_eq!(1024, *rl.as_ref());
     std::mem::drop(rl);
+
+    assert_eq!(size_of::<i32>(), owner.allocated_data_size());
+    assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
 }
 
 #[test]
@@ -52,4 +58,7 @@ fn test_write_lock() {
     std::mem::drop(wl);
 
     assert_eq!(33333, borrower.read().unwrap());
+
+    assert_eq!(size_of::<i32>(), owner.allocated_data_size());
+    assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
 }

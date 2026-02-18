@@ -239,6 +239,11 @@ impl<T> OwnedSharedMemory<T> {
         *locked.as_mut() = value;
         Ok(())
     }
+
+    /// The size of the portion of shared memory allocated for data.
+    pub fn allocated_data_size(&self) -> usize {
+        unsafe { *self.0.data_size }
+    }
 }
 
 /// Represents a borrowed (i.e. opened but not created) shared memory allocation. The holder of this
@@ -272,6 +277,11 @@ impl<T> BorrowedSharedMemory<T> {
     {
         let locked = self.read_lock()?;
         Ok(locked.as_ref().to_owned())
+    }
+
+    /// The size of the portion of shared memory allocated for data.
+    pub fn allocated_data_size(&self) -> usize {
+        unsafe { *self.0.data_size }
     }
 }
 
@@ -383,7 +393,7 @@ struct SharedMemory<T> {
     pub(crate) fd: libc::c_int,
 
     /// Size of the data allocation.
-    pub(crate) _data_size: *mut libc::size_t,
+    pub(crate) data_size: *mut libc::size_t,
 
     /// POSIX read/write lock for syncronization.
     pub(crate) rw_lock: *mut pthread_rwlock_t,
@@ -394,9 +404,11 @@ struct SharedMemory<T> {
 }
 
 impl<T> SharedMemory<T> {
-    /// Net size of the shared memory allocation such that it may contain our data and a mutex.
-    const SHARED_MEMORY_SIZE: usize =
-        size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>() + size_of::<T>();
+    /// The overhead of a tism allocation.
+    const TISM_OVERHEAD: usize = size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>();
+
+    /// Net size of the shared memory allocation such that it may contain our data and a lock.
+    const SHARED_MEMORY_SIZE: usize = Self::TISM_OVERHEAD + size_of::<T>();
 
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation.
@@ -473,7 +485,7 @@ impl<T> SharedMemory<T> {
             };
 
             Ok(SharedMemory {
-                _data_size: data_size,
+                data_size,
                 fd,
                 rw_lock,
                 data,
@@ -508,7 +520,35 @@ impl<T> SharedMemory<T> {
 
             let allocation = libc::mmap(
                 ptr::null_mut(),
-                Self::SHARED_MEMORY_SIZE,
+                size_of::<libc::size_t>(),
+                libc::PROT_WRITE | libc::PROT_READ,
+                libc::MAP_SHARED,
+                fd,
+                0,
+            );
+
+            if allocation == libc::MAP_FAILED {
+                return Err(io::Error::last_os_error());
+            }
+
+            let data_size = *(allocation as *const libc::size_t);
+
+            if Self::SHARED_MEMORY_SIZE != Self::TISM_OVERHEAD + data_size {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Expected ({}) and actual size ({}) of allocation do not match",
+                        Self::SHARED_MEMORY_SIZE,
+                        Self::TISM_OVERHEAD + data_size
+                    ),
+                ));
+            }
+
+            munmap(allocation, size_of::<libc::size_t>());
+
+            let allocation = libc::mmap(
+                ptr::null_mut(),
+                Self::TISM_OVERHEAD + data_size,
                 libc::PROT_WRITE | libc::PROT_READ,
                 libc::MAP_SHARED,
                 fd,
@@ -527,7 +567,7 @@ impl<T> SharedMemory<T> {
             ) as *mut T;
 
             Ok(SharedMemory {
-                _data_size: data_size,
+                data_size,
                 fd,
                 rw_lock,
                 data,
