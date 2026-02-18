@@ -138,6 +138,7 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
+pub mod dynamic;
 pub mod lazy;
 
 #[cfg(test)]
@@ -149,6 +150,9 @@ use libc::{
     pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
 };
 use std::{io, path::Path, ptr};
+
+/// The overhead of a tism allocation.
+const TISM_OVERHEAD: usize = size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>();
 
 /// Create a new shared memory allocaton, which you will own, initialized to the given value of `T`.
 /// If a shared memory allocation by the given name already exists this is not considered an error,
@@ -398,17 +402,13 @@ struct SharedMemory<T> {
     /// POSIX read/write lock for syncronization.
     pub(crate) rw_lock: *mut pthread_rwlock_t,
 
-    /// The actual shared data, this pointer lives in the same allocation as `mutex`, and should be
-    /// a constant offset from it.
+    /// The actual shared data.
     pub(crate) data: *mut T,
 }
 
 impl<T> SharedMemory<T> {
-    /// The overhead of a tism allocation.
-    const TISM_OVERHEAD: usize = size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>();
-
     /// Net size of the shared memory allocation such that it may contain our data and a lock.
-    const SHARED_MEMORY_SIZE: usize = Self::TISM_OVERHEAD + size_of::<T>();
+    const SHARED_MEMORY_SIZE: usize = TISM_OVERHEAD + size_of::<T>();
 
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation.
@@ -533,13 +533,13 @@ impl<T> SharedMemory<T> {
 
             let data_size = *(allocation as *const libc::size_t);
 
-            if Self::SHARED_MEMORY_SIZE != Self::TISM_OVERHEAD + data_size {
+            if Self::SHARED_MEMORY_SIZE != TISM_OVERHEAD + data_size {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
                         "Expected ({}) and actual size ({}) of allocation do not match",
                         Self::SHARED_MEMORY_SIZE,
-                        Self::TISM_OVERHEAD + data_size
+                        TISM_OVERHEAD + data_size
                     ),
                 ));
             }
@@ -548,7 +548,7 @@ impl<T> SharedMemory<T> {
 
             let allocation = libc::mmap(
                 ptr::null_mut(),
-                Self::TISM_OVERHEAD + data_size,
+                TISM_OVERHEAD + data_size,
                 libc::PROT_WRITE | libc::PROT_READ,
                 libc::MAP_SHARED,
                 fd,
