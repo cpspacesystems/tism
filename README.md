@@ -32,7 +32,7 @@ And now you can open the file `target/doc/tism/index.html` to view `tism`'s Rust
 
 ### As a Publishing Process
 
-There are other ways to use `tism`, I recommend this way as it provides the best possible performance without demanding any extra care from the programmer. To use another method see the Rust crate's documentation.
+There are other ways to use `tism`, I recommend this way as it provides the best possible performance without demanding any extra care from the programmer. To use another method see the Rust crate's documentation. When using this method try to make the time between creating and dropping the lock is as short as possible, for as long as the lock is in scope other processes may be prevented from accessing the shared memory.
 
 ```rust
 #[repr(C)]
@@ -45,8 +45,8 @@ struct MyData {
 let init_data = MyData { field_1: 37, field_2: 3.1415 };
 let mut my_shm = tism::create("my_shm", init_data).unwrap();
 
-// by pattern matching on the lock result, we confine our lock to the
-// scope of this if statement
+// By pattern matching on the lock result, we confine our lock to the
+// scope of this if statement.
 if let Ok(mut lock) = my_shm.write_lock() {
 
     // We can get a reference to our shared data and access individual
@@ -59,7 +59,10 @@ if let Ok(mut lock) = my_shm.write_lock() {
 
     // If we want we can also overwrite or read the entire struct.
     assert_eq!(lock.as_ref(), &MyData { field_1: 37, field_2: 3f64 });
-}  // When `lock` drops it unlocks!
+}
+
+// When `lock` drops it unlocks! Try to get here as fast as possible as not to
+// interfere with other process' ability to use the shared memory.
 ```
 
 ### As a Consuming Process
@@ -74,15 +77,18 @@ struct MyData {
     field_2: f64,
 }
 
-// open an existing shared memory allocation
+// Open an existing shared memory allocation.
 let mut my_shm = tism::open::<MyData>("my_shm").unwrap();
 
 if let Ok(lock) = my_shm.read_lock() {
     let x: &MyData = lock.as_ref();
 
-    // our publisher last set `field_2` to 3
+    // Our publisher last set `field_2` to 3.
     assert_eq!(lock.as_ref().field_2, 3f64);
 }
+
+// As with the owned example, our `lock` will unlock when it drops. Ideally you
+// drop the lock quickly after creating it.
 ```
 
 For more details or alternatives see the Rust API documentation, which can be compiled with `cargo doc`.
