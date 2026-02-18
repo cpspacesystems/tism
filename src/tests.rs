@@ -62,3 +62,14 @@ fn test_write_lock() {
     assert_eq!(size_of::<i32>(), owner.allocated_data_size());
     assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
 }
+
+#[test]
+fn test_dynamic_open() {
+    let mut owner = tism::create("test_dynamic_open_shm", 0).unwrap();
+    let mut borrower = tism::dynamic::open("test_dynamic_open_shm").unwrap();
+    assert_eq!(0i32.to_ne_bytes().as_slice(), borrower.read().unwrap());
+    owner.write(1024).unwrap();
+    assert_eq!(1024i32.to_ne_bytes().as_slice(), &borrower.read().unwrap());
+    assert_eq!(size_of::<i32>(), owner.allocated_data_size());
+    assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
+}
