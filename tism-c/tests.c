@@ -1,5 +1,7 @@
 #define SCRUTINY_DEBUG
 
+#include <unistd.h>
+
 #include "tism.h"
 #include "scrutiny/scrutiny.h"
 
@@ -25,7 +27,6 @@ SCRUTINY_UNIT_TEST(test_open) {
 
 	tism_borrowed_shared_memory_t borrower;
 	scrutiny_assert_equal(TISM_OK, tism_open(&borrower, "test_open_shm"));
-	return;
 
 	int read_data;
 	scrutiny_assert_equal(TISM_OK, tism_borrowed_read(&borrower, &read_data));
@@ -38,6 +39,7 @@ SCRUTINY_UNIT_TEST(test_open) {
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
 }
 
+#include <stdio.h>
 SCRUTINY_UNIT_TEST(test_unsafe_read) {
 	int init_data = 0;
 	tism_owned_shared_memory_t owner;
@@ -46,21 +48,26 @@ SCRUTINY_UNIT_TEST(test_unsafe_read) {
 	tism_borrowed_shared_memory_t borrower;
 	scrutiny_assert_equal(TISM_OK, tism_open(&borrower, "test_unsafe_read_shm"));
 
-	int* shm_data = NULL;
-	scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_read_lock(&borrower, (void**)&shm_data));
-	scrutiny_assert(shm_data);
-	scrutiny_assert_equal(0, *shm_data);
-	scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_unlock(&borrower, (void**)&shm_data));
-	scrutiny_assert(!shm_data);
+	{
+		volatile int* shm_data = NULL;
+		scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_read_lock(&borrower, (void**)&shm_data));
+		scrutiny_assert(shm_data);
+		scrutiny_assert_equal(0, *shm_data);
+		scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_unlock(&borrower, (void**)&shm_data));
+		scrutiny_assert(!shm_data);
+	}
 
-	init_data = 803;
-	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &init_data));
+	int new_data = 803;
+	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &new_data));
 
-	scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_read_lock(&borrower, (void**)&shm_data));
-	scrutiny_assert(shm_data);
-	scrutiny_assert_equal(803, *shm_data);
-	scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_unlock(&borrower, (void**)&shm_data));
-	scrutiny_assert(!shm_data);
+	{
+		volatile int* shm_data = NULL;
+		scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_read_lock(&borrower, (void**)&shm_data));
+		scrutiny_assert(shm_data);
+		scrutiny_assert_equal(803, *shm_data);
+		scrutiny_assert_equal(TISM_OK, tism_unsafe_borrowed_unlock(&borrower, (void**)&shm_data));
+		scrutiny_assert(!shm_data);
+	}
 
 	scrutiny_assert_equal(TISM_OK, tism_borrowed_close(&borrower));
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));

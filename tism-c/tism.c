@@ -7,12 +7,12 @@
 #include <unistd.h>
 
 #include <stdio.h>
-#define TISM_OVERHEAD (sizeof(size_t) + sizeof(pthread_rwlock_t))
+#define TISM_OVERHEAD (sizeof(struct _tism_allocation) - 1)
 
 #define CREATE_FLAGS (O_CREAT | O_RDWR | O_TRUNC | O_EXCL)
 #define CREATE_MODE  (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)
 
-tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n) {
+tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n) {
 	if (strlen(name) > TISM_MAX_NAME_LENGTH) {
 		return TISM_INVALID_ARGUMENT;
 	}
@@ -76,7 +76,7 @@ tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const voi
 		}
 	}
 
-	void* allocation = mmap(
+	volatile void* allocation = mmap(
 		NULL,
 		TISM_OVERHEAD + n,
 		PROT_WRITE | PROT_READ,
@@ -93,23 +93,24 @@ tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const voi
 		}
 	}
 
-	shm->data_size = (size_t*)allocation;
-	shm->rw_lock = (pthread_rwlock_t*)(allocation + sizeof(size_t));
-	shm->data = allocation + TISM_OVERHEAD;
-
-	*shm->data_size = n;
-	memcpy(shm->data, data, n);
+	shm->allocation = (struct _tism_allocation*)allocation;
+	shm->allocation->data_size = n;
+	shm->allocation->major_version = TISM_MAJOR_VERSION;
+	shm->allocation->minor_version = TISM_MINOR_VERSION;
+	shm->allocation->patch_version = TISM_PATCH_VERSION;
 	
-	switch (pthread_rwlock_init(shm->rw_lock, NULL)) {
+	switch (pthread_rwlock_init(&shm->allocation->rw_lock, NULL)) {
 		case 0:     break;
 		case EPERM: return TISM_BAD_PERMISSIONS;
 		default:    return TISM_UNKNOWN;
 	}
 
+	memcpy(&shm->allocation->data, data, n);
+
 	return TISM_OK;
 }
 
-tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name) {
+tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name) {
 	if (strlen(name) > TISM_MAX_NAME_LENGTH) {
 		return TISM_INVALID_ARGUMENT;
 	}
@@ -157,7 +158,7 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name) {
 
 	void* allocation = mmap(
 		NULL,
-		sizeof(size_t),
+		sizeof(struct _tism_allocation),
 		PROT_WRITE | PROT_READ,
 		MAP_SHARED,
 		shm->fd,
@@ -172,8 +173,14 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name) {
 		}
 	}
 
-	size_t data_size = *(size_t*)allocation;
-	munmap(allocation, sizeof(size_t));
+	struct _tism_allocation* tism_allocation = (struct _tism_allocation*)allocation;
+	size_t data_size = tism_allocation->data_size;
+
+	if (tism_allocation->major_version != TISM_MAJOR_VERSION) {
+		return TISM_VERSION_MISMATCH;
+	}
+
+	munmap(allocation, sizeof(struct _tism_allocation));
 
 	allocation = mmap(
 		NULL,
@@ -192,49 +199,47 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name) {
 		}
 	}
  
-	shm->data_size = (size_t*)allocation;
-	shm->rw_lock = (pthread_rwlock_t*)(allocation + sizeof(size_t));
-	shm->data = allocation + TISM_OVERHEAD;
+	shm->allocation = (struct _tism_allocation*)allocation;
 
 	return TISM_OK;
 }
 
-tism_result_t tism_owned_close(tism_owned_shared_memory_t* shm) {
+tism_result_t tism_owned_close(volatile tism_owned_shared_memory_t* shm) {
 	return _tism_close((struct _tism_shared_memory*)shm);
 }
 
-tism_result_t tism_borrowed_close(tism_borrowed_shared_memory_t* shm) {
+tism_result_t tism_borrowed_close(volatile tism_borrowed_shared_memory_t* shm) {
 	return _tism_close((struct _tism_shared_memory*)shm);
 }
  
 
-tism_result_t tism_owned_write(tism_owned_shared_memory_t* shm, const void* data) {
+tism_result_t tism_owned_write(volatile tism_owned_shared_memory_t* shm, const void* data) {
 	return _tism_write((struct _tism_shared_memory*)shm, data);
 }
 
-tism_result_t tism_owned_read(tism_owned_shared_memory_t* shm, void* data) {
+tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* data) {
 	return _tism_read((struct _tism_shared_memory*)shm, data);
 }
 
 
-tism_result_t tism_borrowed_read(tism_borrowed_shared_memory_t* shm, void* data) {
+tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, void* data) {
 	return _tism_read((struct _tism_shared_memory*)shm, data);
 }
 
 
-tism_result_t tism_unsafe_owned_write_lock(tism_owned_shared_memory_t* shm, void** data) {
+tism_result_t tism_unsafe_owned_write_lock(volatile tism_owned_shared_memory_t* shm, void** data) {
 	TISM_MBIND(_tism_write_lock((struct _tism_shared_memory*)shm));
-	*data = shm->data;
+	*data = &shm->allocation->data;
 	return TISM_OK;
 }
 
-tism_result_t tism_unsafe_owned_read_lock(tism_owned_shared_memory_t* shm, void** data) {
+tism_result_t tism_unsafe_owned_read_lock(volatile tism_owned_shared_memory_t* shm, void** data) {
 	TISM_MBIND(_tism_read_lock((struct _tism_shared_memory*)shm));
-	*data = shm->data;
+	*data = &shm->allocation->data;
 	return TISM_OK;
 }
 
-tism_result_t tism_unsafe_owned_unlock(tism_owned_shared_memory_t* shm, void** data){
+tism_result_t tism_unsafe_owned_unlock(volatile tism_owned_shared_memory_t* shm, void** data){
 	if (data) {
 		*data = NULL;
 	}
@@ -243,13 +248,13 @@ tism_result_t tism_unsafe_owned_unlock(tism_owned_shared_memory_t* shm, void** d
 }
 
 
-tism_result_t tism_unsafe_borrowed_read_lock(tism_borrowed_shared_memory_t* shm, void** data) {
+tism_result_t tism_unsafe_borrowed_read_lock(volatile tism_borrowed_shared_memory_t* shm, void** data) {
 	TISM_MBIND(_tism_read_lock((struct _tism_shared_memory*)shm));
-	*data = shm->data;
+	*data = &shm->allocation->data;
 	return TISM_OK;
 }
 
-tism_result_t tism_unsafe_borrowed_unlock(tism_borrowed_shared_memory_t* shm, void** data) {
+tism_result_t tism_unsafe_borrowed_unlock(volatile tism_borrowed_shared_memory_t* shm, void** data) {
 	if (data) {
 		*data = NULL;
 	}
@@ -258,46 +263,46 @@ tism_result_t tism_unsafe_borrowed_unlock(tism_borrowed_shared_memory_t* shm, vo
 }
 
 
-tism_result_t _tism_write(struct _tism_shared_memory* shm, const void* data) {
+tism_result_t _tism_write(volatile struct _tism_shared_memory* shm, const void* data) {
 	TISM_MBIND(_tism_write_lock(shm));
-	memcpy(shm->data, data, *shm->data_size);
+	memcpy(&shm->allocation->data, data, shm->allocation->data_size);
 	TISM_MBIND(_tism_unlock(shm));
 
 	return TISM_OK;
 }
 
-tism_result_t _tism_read(struct _tism_shared_memory* shm, void* data) {
+tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data) {
 	TISM_MBIND(_tism_read_lock(shm));
-	memcpy(data, shm->data, *shm->data_size);
+	memcpy(data, &shm->allocation->data, shm->allocation->data_size);
 	TISM_MBIND(_tism_unlock(shm));
 
 	return TISM_OK;
 }
 
 
-tism_result_t _tism_write_lock(struct _tism_shared_memory* shm) {
-	switch (pthread_rwlock_wrlock(shm->rw_lock)) {
+tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
+	switch (pthread_rwlock_wrlock(&shm->allocation->rw_lock)) {
 		case 0:     return TISM_OK;
 		default:    return TISM_UNKNOWN;
 	}
 }
 
-tism_result_t _tism_read_lock(struct _tism_shared_memory* shm) {
-	switch (pthread_rwlock_rdlock(shm->rw_lock)) {
+tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
+	switch (pthread_rwlock_rdlock(&shm->allocation->rw_lock)) {
 		case 0:     return TISM_OK;
 		default:    return TISM_UNKNOWN;
 	}
 }
 
-tism_result_t _tism_unlock(struct _tism_shared_memory* shm) {
-	switch (pthread_rwlock_unlock(shm->rw_lock)) {
+tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {
+	switch (pthread_rwlock_unlock(&shm->allocation->rw_lock)) {
 		case 0:     return TISM_OK;
 		case EPERM: return TISM_BAD_PERMISSIONS;
 		default:    return TISM_UNKNOWN;
 	}
 }
 
-tism_result_t _tism_close(struct _tism_shared_memory* shm) {
+tism_result_t _tism_close(volatile struct _tism_shared_memory* shm) {
 	if (close(shm->fd) != 0) {
 		switch (errno) {
 			case EINTR: return TISM_INTERUPTED;
@@ -305,7 +310,7 @@ tism_result_t _tism_close(struct _tism_shared_memory* shm) {
 		}
 	}
 
-	if (munmap(shm->data_size, TISM_OVERHEAD + *shm->data_size) != 0) {
+	if (munmap(shm->allocation, TISM_OVERHEAD + shm->allocation->data_size) != 0) {
 		return TISM_UNKNOWN;
 	}
 

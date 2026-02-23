@@ -138,6 +138,10 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
+const MAJOR_VERSION: u8 = 0;
+const MINOR_VERSION: u8 = 0;
+const PATCH_VERSION: u16 = 0;
+
 pub mod dynamic;
 pub mod lazy;
 
@@ -169,7 +173,7 @@ pub fn create<T>(name: impl AsRef<Path>, init: T) -> io::Result<OwnedSharedMemor
 
     unsafe {
         shm.write_lock()?;
-        *shm.data = init;
+        (*shm.allocation).data = init;
         shm.unlock()?;
     }
 
@@ -246,7 +250,7 @@ impl<T> OwnedSharedMemory<T> {
 
     /// The size of the portion of shared memory allocated for data.
     pub fn allocated_data_size(&self) -> usize {
-        unsafe { *self.0.data_size }
+        unsafe { (*self.0.allocation).data_size }
     }
 }
 
@@ -285,7 +289,7 @@ impl<T> BorrowedSharedMemory<T> {
 
     /// The size of the portion of shared memory allocated for data.
     pub fn allocated_data_size(&self) -> usize {
-        unsafe { *self.0.data_size }
+        unsafe { (*self.0.allocation).data_size }
     }
 }
 
@@ -325,13 +329,13 @@ impl<'m, T> WriteLockedSharedMemory<'m, T> {
 
 impl<'m, T> AsRef<T> for WriteLockedSharedMemory<'m, T> {
     fn as_ref(&self) -> &T {
-        unsafe { &*self.0.data }
+        unsafe { &(*self.0.allocation).data }
     }
 }
 
 impl<'m, T> AsMut<T> for WriteLockedSharedMemory<'m, T> {
     fn as_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.0.data }
+        unsafe { &mut (*self.0.allocation).data }
     }
 }
 
@@ -380,7 +384,7 @@ impl<'m, T> ReadLockedSharedMemory<'m, T> {
 
 impl<'m, T> AsRef<T> for ReadLockedSharedMemory<'m, T> {
     fn as_ref(&self) -> &T {
-        unsafe { &*self.0.data }
+        unsafe { &(*self.0.allocation).data }
     }
 }
 
@@ -396,14 +400,33 @@ struct SharedMemory<T> {
     /// File descriptor of the shared memory.
     pub(crate) fd: libc::c_int,
 
+    /// The allocation itself, which we should never have our own copy of and will instead only ever
+    /// acquire an instance via memory mapping.
+    pub(crate) allocation: *mut Allocation<T>,
+}
+
+#[repr(C)]
+struct Allocation<T> {
     /// Size of the data allocation.
-    pub(crate) data_size: *mut libc::size_t,
+    pub(crate) data_size: libc::size_t,
+
+    /// Major version of the TISM library used to create the allocation. Mismatched major versions
+    /// should result in an error from TISM.
+    pub(crate) major_version: u8,
+
+    /// Minor version of the TISM library used to create the allocation. TISM should not produce an
+    /// error when opening an allocation of a differing minor version.
+    pub(crate) minor_version: u8,
+
+    /// Patch version of the TISM library used to create the allocation. TISM may warn but should
+    /// not produce an error for mismatched patches.
+    pub(crate) patch_version: u16,
 
     /// POSIX read/write lock for syncronization.
-    pub(crate) rw_lock: *mut pthread_rwlock_t,
+    pub(crate) rw_lock: pthread_rwlock_t,
 
     /// The actual shared data.
-    pub(crate) data: *mut T,
+    pub(crate) data: T,
 }
 
 impl<T> SharedMemory<T> {
@@ -466,30 +489,20 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            // Divide the memory into a size, lock, and actual data, then initialize the lock and
-            // data.
-            let data_size = allocation as *mut libc::size_t;
-            let rw_lock =
-                allocation.byte_offset(size_of::<libc::size_t>() as isize) as *mut pthread_rwlock_t;
-            let data = allocation.byte_offset(
-                size_of::<libc::size_t>() as isize + size_of::<pthread_rwlock_t>() as isize,
-            ) as *mut T;
+            let allocation = allocation as *mut Allocation<T>;
+            (*allocation).data_size = size_of::<T>();
+            (*allocation).major_version = MAJOR_VERSION;
+            (*allocation).minor_version = MINOR_VERSION;
+            (*allocation).patch_version = PATCH_VERSION;
 
-            *data_size = size_of::<T>();
-
-            match pthread_rwlock_init(rw_lock, ptr::null()) {
+            match pthread_rwlock_init(&raw mut (*allocation).rw_lock, ptr::null()) {
                 0 => (),
                 e => {
                     return Err(io::Error::from_raw_os_error(e));
                 }
             };
 
-            Ok(SharedMemory {
-                data_size,
-                fd,
-                rw_lock,
-                data,
-            })
+            Ok(SharedMemory { fd, allocation })
         }
     }
 
@@ -559,25 +572,22 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            let data_size = allocation as *mut libc::size_t;
-            let rw_lock =
-                allocation.byte_offset(size_of::<libc::size_t>() as isize) as *mut pthread_rwlock_t;
-            let data = allocation.byte_offset(
-                size_of::<libc::size_t>() as isize + size_of::<pthread_rwlock_t>() as isize,
-            ) as *mut T;
+            let allocation = allocation as *mut Allocation<T>;
 
-            Ok(SharedMemory {
-                data_size,
-                fd,
-                rw_lock,
-                data,
-            })
+            if (*allocation).major_version != MAJOR_VERSION {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "TISM major version mismatch",
+                ));
+            }
+
+            Ok(SharedMemory { fd, allocation })
         }
     }
 
     unsafe fn write_lock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_wrlock(self.rw_lock) {
+            match pthread_rwlock_wrlock(&raw mut (*self.allocation).rw_lock) {
                 0 => Ok(()),
                 e => Err(io::Error::from_raw_os_error(e)),
             }
@@ -586,7 +596,7 @@ impl<T> SharedMemory<T> {
 
     unsafe fn read_lock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_rdlock(self.rw_lock) {
+            match pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) {
                 0 => Ok(()),
                 e => Err(io::Error::from_raw_os_error(e)),
             }
@@ -595,7 +605,7 @@ impl<T> SharedMemory<T> {
 
     unsafe fn unlock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_unlock(self.rw_lock) {
+            match pthread_rwlock_unlock(&raw mut (*self.allocation).rw_lock) {
                 0 => Ok(()),
                 e => Err(io::Error::from_raw_os_error(e)),
             }
@@ -607,7 +617,10 @@ impl<T> Drop for SharedMemory<T> {
     fn drop(&mut self) {
         unsafe {
             close(self.fd);
-            munmap(self.rw_lock as _, Self::SHARED_MEMORY_SIZE);
+            munmap(
+                &raw mut (*self.allocation).rw_lock as _,
+                Self::SHARED_MEMORY_SIZE,
+            );
         }
     }
 }

@@ -20,6 +20,10 @@
 #include <pthread.h>
 #include <sys/mman.h>
 
+#define TISM_MAJOR_VERSION 0
+#define TISM_MINOR_VERSION 0
+#define TISM_PATCH_VERSION 0
+
 /*
  * Monadic-bind like operation for `tism_result_t`. Returns early if the result is an error, and
  * continues execution as normal if it is `TISM_OK`.
@@ -56,10 +60,20 @@ typedef struct _tism_shared_memory tism_borrowed_shared_memory_t;
  */
 struct _tism_shared_memory {
 	int fd;
-	size_t* data_size;
-	pthread_rwlock_t* rw_lock;
-	void* data;
-}; 
+	struct _tism_allocation* allocation;
+};
+
+/*
+ * The layout of a TISM shared memory allocation.
+ */
+struct _tism_allocation {
+	size_t data_size;
+	uint8_t major_version;
+	uint8_t minor_version;
+	uint16_t patch_version;
+	pthread_rwlock_t rw_lock;
+	char data[]; /* This field just marks the first byte of data. */
+};
 
 /*
  * Errors that may occur while using TISM, all functions return this type.
@@ -75,6 +89,7 @@ typedef enum {
 	TISM_FILE_TABLE,       /* The system file table is at capacity. */
 	TISM_NO_SPACE,         /* Insufficiant space to allocate recourse. */
 	TISM_TOO_BIG, 		   /* Required allocation exceeds system maximum. */
+	TISM_VERSION_MISMATCH, /* Attempted to open an allocaton with a mismatched major version. */
 
 	TISM_UNKNOWN,  /* An unknown error occured. */
 } tism_result_t;
@@ -89,14 +104,14 @@ typedef enum {
  * TISM will save the size you give here, and functions which use the `tism_owned_shared_memory_t`
  * will not take it as a parameter.
  */
-tism_result_t tism_create(tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n);
+tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n);
 
 /*
  * Open a shared memory allocation for reading. This function recovers the size of the allocation
  * from its file descriptor, and this value is saved an used for all other functions which use a
  * `tism_borrowed_shared_memory_t`.
  */
-tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name);
+tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
 
 /*
  * Close the borrowed shared memory and free its resources. This DOES NOT delete the allocation, the
@@ -104,7 +119,7 @@ tism_result_t tism_open(tism_borrowed_shared_memory_t* shm, char* name);
  * descriptors and TISM intentionally does not provide an API for destroying as instance of shared
  * memory.
  */
-tism_result_t tism_owned_close(tism_owned_shared_memory_t* shm);
+tism_result_t tism_owned_close(volatile tism_owned_shared_memory_t* shm);
 
 /*
  * Close the owned shared memory and free its resources. This DOES NOT delete the allocation, the
@@ -112,27 +127,27 @@ tism_result_t tism_owned_close(tism_owned_shared_memory_t* shm);
  * descriptors and TISM intentionally does not provide an API for destroying as instance of shared
  * memory.
  */
-tism_result_t tism_borrowed_close(tism_borrowed_shared_memory_t* shm);
+tism_result_t tism_borrowed_close(volatile tism_borrowed_shared_memory_t* shm);
 
 
 /*
  * Write to the shared memory allocation by cloning the given data. This function will acquire and
  * release a write lock.
  */
-tism_result_t tism_owned_write(tism_owned_shared_memory_t* shm, const void* data);
+tism_result_t tism_owned_write(volatile tism_owned_shared_memory_t* shm, const void* data);
 
 /*
  * Read from the shared memory allocation by cloning the data into the given pointer. This function
  * will acquire and release a read lock.
  */
-tism_result_t tism_owned_read(tism_owned_shared_memory_t* shm, void* data);
+tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* data);
 
 
 /*
  * Read from the shared memory allocation by cloning the data into the given pointer. This function
  * will acquire and release a read lock.
  */
-tism_result_t tism_borrowed_read(tism_borrowed_shared_memory_t* shm, void* data);
+tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, void* data);
 
 
 /*
@@ -140,65 +155,65 @@ tism_result_t tism_borrowed_read(tism_borrowed_shared_memory_t* shm, void* data)
  * access while the memory is write locked. Be sure to unlock, ideally as soon as possible, after
  * calling this function.
  */
-tism_result_t tism_unsafe_owned_write_lock(tism_owned_shared_memory_t* shm, void** data);
+tism_result_t tism_unsafe_owned_write_lock(volatile tism_owned_shared_memory_t* shm, void** data);
 
 /*
  * Lock the shared memory for reading. This lock allows any number of other readers but no writers
  * to access the lock. Be sure to unlock, ideally as soon as possible, after calling this function.
  */
-tism_result_t tism_unsafe_owned_read_lock(tism_owned_shared_memory_t* shm, void** data);
+tism_result_t tism_unsafe_owned_read_lock(volatile tism_owned_shared_memory_t* shm, void** data);
 
 /*
  * Release the held lock. Sets the pointed to pointer to `NULL` assuming that it itself is not
  * `NULL`.
  */
-tism_result_t tism_unsafe_owned_unlock(tism_owned_shared_memory_t* shm, void** data);
+tism_result_t tism_unsafe_owned_unlock(volatile tism_owned_shared_memory_t* shm, void** data);
 
 
 /*
  * Lock the shared memory for reading. This lock allows any number of other readers but no writers
  * to access the lock. Be sure to unlock, ideally as soon as possible, after calling this function.
  */
-tism_result_t tism_unsafe_borrowed_read_lock(tism_borrowed_shared_memory_t* shm, void** data);
+tism_result_t tism_unsafe_borrowed_read_lock(volatile tism_borrowed_shared_memory_t* shm, void** data);
 
 /*
  * Release the held lock. Sets the pointed to pointer to `NULL` assuming that it itself is not
  * `NULL`.
  */
-tism_result_t tism_unsafe_borrowed_unlock(tism_borrowed_shared_memory_t* shm, void** data);
+tism_result_t tism_unsafe_borrowed_unlock(volatile tism_borrowed_shared_memory_t* shm, void** data);
 
 
 /*
  * Lock for writing, clone the given data into the allocation, and unlock.
  */
-tism_result_t _tism_write(struct _tism_shared_memory* shm, const void* data);
+tism_result_t _tism_write(volatile struct _tism_shared_memory* shm, const void* data);
 
 /*
  * Lock for reading, clone the allocation into the given pointer, and unlock.
  */
-tism_result_t _tism_read(struct _tism_shared_memory* shm, void* data);
+tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data);
 
 
 /*
  * Lock the shared memory for writing. This is an exclusive lock and no other process will have
  * access while the memory is write locked.
  */
-tism_result_t _tism_write_lock(struct _tism_shared_memory* shm);
+tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm);
 
 /*
  * Lock the shared memory for reading. This lock allows any number of other readers but no writers
  * to access the lock.
  */
-tism_result_t _tism_read_lock(struct _tism_shared_memory* shm);
+tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm);
 
 /*
  * Release the held lock.
  */
-tism_result_t _tism_unlock(struct _tism_shared_memory* shm);
+tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm);
 
 /*
  * Close and free resources for this processes handle on the shared memory.
  */
-tism_result_t _tism_close(struct _tism_shared_memory* shm);
+tism_result_t _tism_close(volatile struct _tism_shared_memory* shm);
 
 #endif  /* _TISM_H */

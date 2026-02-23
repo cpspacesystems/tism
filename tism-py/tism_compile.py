@@ -5,7 +5,7 @@
 from cffi import FFI
 import itertools
 
-TISM_HEADER_PATH: str = "../tism-c/tism.h"
+TISM_HEADER_PATH: str = "tism.h"
 TISM_SOURCE_PATH: str = "../tism-c/tism.c"
 
 def remove_comments(source: str) -> str:
@@ -31,18 +31,8 @@ def remove_comments(source: str) -> str:
 
     return source
 
-def replace_unknowable_types(source: str) -> str:
-    """
-    Replace types which are not known by CFFI and not defined by TISM. CFFI
-    cannot parse directives and as a result types declared in headers are
-    unusable to us. Luckily pointers are just pointers.
-    """
-
-    source = source.replace("pthread_rwlock_t*", "void*")
-    return source
-
 # Process our header a bit to make it usable for CFFI.
-header_text = replace_unknowable_types(remove_comments(open(TISM_HEADER_PATH).read()))
+header_text = remove_comments(open(TISM_HEADER_PATH).read())
 header_text = '\n'.join(
     filter(
         lambda s: s != "" and not s.startswith("#"),  # remove directives

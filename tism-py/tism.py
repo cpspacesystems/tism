@@ -39,7 +39,7 @@ class _TismOwnedSharedMemory:
         so, then unlocks before returning.
         """
 
-        if self._shm.data_size[0] != len(value):
+        if self._shm.allocation.data_size != len(value):
             raise RuntimeError("Given value is not the same size as allocation")
 
         value_ptr = ffi.new("char[]", bytes(value))
@@ -51,9 +51,9 @@ class _TismOwnedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self._shm.data_size[0])
+        value_ptr = ffi.new("char[]", self._shm.allocation.data_size)
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self._shm.data_size[0])
+        buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
     def __enter__(self):
@@ -82,9 +82,9 @@ class _TismBorrowedSharedMemory:
         allocation, and block until it can do so, then unlock before returning.
         """
 
-        value_ptr = ffi.new("char[]", self._shm.data_size[0])
+        value_ptr = ffi.new("char[]", self._shm.allocation.data_size)
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
-        buf = ffi.buffer(value_ptr, self._shm.data_size[0])
+        buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
     def __enter__(self):
