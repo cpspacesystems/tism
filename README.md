@@ -78,7 +78,7 @@ struct MyData {
 }
 
 // Open an existing shared memory allocation.
-let mut my_shm = tism::open::<MyData>("my_shm").unwrap();
+let mut my_shm = tism::wait_and_open::<MyData>("my_shm").unwrap();
 
 if let Ok(lock) = my_shm.read_lock() {
     let x: &MyData = lock.as_ref();
@@ -165,7 +165,7 @@ int main() {
      * size of the allocation implicitly.
      */
 
-    TISM_MBIND(tism_open(&shm, "my_shm"));
+    TISM_MBIND(tism_wait_and_open(&shm, "my_shm"));
 
     /*
      * TISM remembers the size from when you create the allocation,
@@ -281,7 +281,7 @@ if __name__ == "__main__":
 import tism
 
 if __name__ == "__main__":
-    with open("my_shm") as shm:
+    with wait_and_open("my_shm") as shm:
         # our data earlier was two bytes, so we should expect that here
         read_data = shm.read()
         print(f"{read_data} should be BEEF")

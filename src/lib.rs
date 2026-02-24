@@ -104,7 +104,10 @@
 //! let init_data = MyData { field_1: 37, field_2: 3.1415 };
 //! let my_shm_owner = tism::create("shm_zerocopy_consumer_example", init_data).unwrap();
 //!
-//! let mut my_shm = tism::open::<MyData>("shm_zerocopy_consumer_example").unwrap();
+//! // We can also use the `tism::open` function if we want our open to fail if
+//! // the allocation does not yet exist, this call will wait until the
+//! // allocation is available.
+//! let mut my_shm = tism::wait_and_open::<MyData>("shm_zerocopy_consumer_example").unwrap();
 //!
 //! if let Ok(lock) = my_shm.read_lock() {
 //!     let x: &MyData = lock.as_ref();
@@ -125,7 +128,7 @@
 //! let init_data = MyData { field_1: 37, field_2: 3.1415 };
 //! let my_shm_owner = tism::create("shm_clone_consumer_example", init_data).unwrap();
 //!
-//! let mut my_shm = tism::open::<MyData>("shm_clone_consumer_example").unwrap();
+//! let mut my_shm = tism::wait_and_open::<MyData>("shm_clone_consumer_example").unwrap();
 //!
 //! let x = my_shm.read().unwrap();
 //! assert_eq!(x, MyData { field_1: 37, field_2: 3.1415 });
