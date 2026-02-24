@@ -35,6 +35,7 @@ typedef enum {
 
 tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n);
 tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
+tism_result_t tism_wait_and_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
 tism_result_t tism_owned_close(volatile tism_owned_shared_memory_t* shm);
 tism_result_t tism_borrowed_close(volatile tism_borrowed_shared_memory_t* shm);
 

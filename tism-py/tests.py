@@ -24,5 +24,17 @@ class Tests(unittest.TestCase):
         del owner
 
 
+    def test_wait_and_open(self):
+        owner = tism.create("test_wait_shm", bytes([0xBE, 0xEF]))
+        borrower = tism.wait_and_open("test_wait_shm")
+
+        self.assertEqual(bytes([0xBE, 0xEF]), borrower.read())
+        owner.write(bytes([0xFA, 0xAA]))
+        self.assertEqual(bytes([0xFA, 0xAA]), borrower.read())
+
+        del borrower
+        del owner
+
+
 if __name__ == "__main__":
     unittest.main()

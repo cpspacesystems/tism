@@ -145,6 +145,7 @@ tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name)
 
 	if (shm->fd < 0) {
 		switch (errno) {
+			case ENOENT:	   return TISM_DOES_NOT_EXIST;
 			case EACCES:       return TISM_BAD_PERMISSIONS;
 			case EINTR:        return TISM_INTERUPTED;
 			case EINVAL:       return TISM_UNSUPPORTED;
@@ -202,6 +203,14 @@ tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name)
 	shm->allocation = (struct _tism_allocation*)allocation;
 
 	return TISM_OK;
+}
+
+tism_result_t tism_wait_and_open(volatile tism_borrowed_shared_memory_t* shm, char* name) {
+	tism_result_t res = TISM_OK;
+	
+	while ((res = tism_open(shm, name)) == TISM_DOES_NOT_EXIST);
+
+	return res;
 }
 
 tism_result_t tism_owned_close(volatile tism_owned_shared_memory_t* shm) {

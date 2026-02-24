@@ -21,6 +21,17 @@ fn test_open() {
 }
 
 #[test]
+fn test_wait_and_open() {
+    let mut owner = tism::create("test_wait_shm", 0).unwrap();
+    let mut borrower = tism::wait_and_open::<i32>("test_wait_shm").unwrap();
+    assert_eq!(0, borrower.read().unwrap());
+    owner.write(1024).unwrap();
+    assert_eq!(1024, borrower.read().unwrap());
+    assert_eq!(size_of::<i32>(), owner.allocated_data_size());
+    assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
+}
+
+#[test]
 fn test_read_lock() {
     let mut owner = tism::create("test_read_lock_shm", 0).unwrap();
     let mut borrower = tism::open::<i32>("test_read_lock_shm").unwrap();

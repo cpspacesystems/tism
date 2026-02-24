@@ -197,6 +197,26 @@ pub fn open<T>(name: impl AsRef<Path>) -> io::Result<BorrowedSharedMemory<T>> {
     Ok(BorrowedSharedMemory(shm))
 }
 
+/// Continually attempt to open a shared memory allocation, retrying if the allocation does not
+/// exist. All other kinds of errors are still propogated. See [`tism::open`] for more info.
+///
+/// [`tism::open`]: open
+pub fn wait_and_open<T>(name: impl AsRef<Path>) -> io::Result<BorrowedSharedMemory<T>> {
+    loop {
+        match SharedMemory::open(name.as_ref()) {
+            Ok(shm) => return Ok(BorrowedSharedMemory(shm)),
+
+            Err(io_err) => match io_err.kind() {
+                // We only accept "not found" errors
+                io::ErrorKind::NotFound => continue,
+
+                // Propogate anything else
+                _ => return Err(io_err),
+            },
+        }
+    }
+}
+
 /// Represents an owned (i.e. created) shared memory allocaton. Only the process which holds the
 /// [`tism::OwnedSharedMemory`] instance is allowed to write to the memory. This process may be
 /// refered to as the "publisher" in some parts of [`tism`]'s documentation.

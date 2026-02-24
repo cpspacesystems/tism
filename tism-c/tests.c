@@ -39,6 +39,25 @@ SCRUTINY_UNIT_TEST(test_open) {
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
 }
 
+SCRUTINY_UNIT_TEST(test_wait_and_open) {
+	int init_data = 0;
+	tism_owned_shared_memory_t owner;
+	scrutiny_assert_equal(TISM_OK, tism_create(&owner, "test_wait_shm", &init_data, sizeof init_data));
+
+	tism_borrowed_shared_memory_t borrower;
+	scrutiny_assert_equal(TISM_OK, tism_wait_and_open(&borrower, "test_wait_shm"));
+
+	int read_data;
+	scrutiny_assert_equal(TISM_OK, tism_borrowed_read(&borrower, &read_data));
+	scrutiny_assert_equal(read_data, init_data);
+
+	init_data = 300;
+	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &init_data));
+
+	scrutiny_assert_equal(TISM_OK, tism_borrowed_close(&borrower));
+	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
+}
+
 #include <stdio.h>
 SCRUTINY_UNIT_TEST(test_unsafe_read) {
 	int init_data = 0;
@@ -100,6 +119,7 @@ int main() {
 	scrutiny_test_t tests[] = {
 		test_create,
 		test_open,
+		test_wait_and_open,
 		test_unsafe_read,
 		test_unsafe_write,
 		NULL

@@ -125,6 +125,19 @@ def open(name: str) -> _TismBorrowedSharedMemory:
     return _TismBorrowedSharedMemory(shm)
 
 
+def wait_and_open(name: str) -> _TismBorrowedSharedMemory:
+    """
+    Open an existing shared memory allocation by the given name
+    """
+
+    c_str = _create_c_str(name)
+
+    shm = ffi.new("struct _tism_shared_memory*")
+    _raise_tism_error(lib.tism_wait_and_open(shm, c_str))
+
+    return _TismBorrowedSharedMemory(shm)
+
+
 def _raise_tism_error(err: ffi.CData):
     """
     Check our C-style result enum errors into Python exception handling. Raises

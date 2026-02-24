@@ -90,6 +90,7 @@ typedef enum {
 	TISM_NO_SPACE,         /* Insufficiant space to allocate recourse. */
 	TISM_TOO_BIG, 		   /* Required allocation exceeds system maximum. */
 	TISM_VERSION_MISMATCH, /* Attempted to open an allocaton with a mismatched major version. */
+    TISM_DOES_NOT_EXIST,   /* An allocation by the given name does not exist. */
 
 	TISM_UNKNOWN,  /* An unknown error occured. */
 } tism_result_t;
@@ -112,6 +113,11 @@ tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, 
  * `tism_borrowed_shared_memory_t`.
  */
 tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
+
+/*
+ * Like `open` but will retry until the allocation exists.
+ */
+tism_result_t tism_wait_and_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
 
 /*
  * Close the borrowed shared memory and free its resources. This DOES NOT delete the allocation, the
