@@ -71,8 +71,10 @@ struct _tism_allocation {
 	uint8_t major_version;
 	uint8_t minor_version;
 	uint16_t patch_version;
+	_Atomic uint64_t total_writes;  /* Total number of times written, initialization counts as a write. */
 	pthread_rwlock_t rw_lock;
-	char data[]; /* This field just marks the first byte of data. */
+	struct timeval timestamp;
+	char data[];                    /* This field just marks the first byte of data. */
 };
 
 /*
@@ -148,12 +150,34 @@ tism_result_t tism_owned_write(volatile tism_owned_shared_memory_t* shm, const v
  */
 tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* data);
 
+/*
+ * Read the timestamp of the last write to this shared memory into the given pointer. This function
+ * acquires and releases a read lock.
+ */
+tism_result_t tism_owned_read_timestamp(volatile tism_owned_shared_memory_t* shm, struct timeval* time);
+
+/*
+ * Get the total number of writes performed on the given shared memory.
+ */
+uint64_t tism_owned_get_total_writes(tism_owned_shared_memory_t* shm);
+
 
 /*
  * Read from the shared memory allocation by cloning the data into the given pointer. This function
  * will acquire and release a read lock.
  */
 tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, void* data);
+
+/*
+ * Read the timestamp of the last write to this shared memory into the given pointer. This function
+ * acquires and releases a read lock.
+ */
+tism_result_t tism_borrowed_read_timestamp(volatile tism_borrowed_shared_memory_t* shm, struct timeval* time);
+
+/*
+ * Get the total number of writes performed on the given shared memory.
+ */
+uint64_t tism_borrowed_get_total_writes(tism_borrowed_shared_memory_t* shm);
 
 
 /*
@@ -198,6 +222,17 @@ tism_result_t _tism_write(volatile struct _tism_shared_memory* shm, const void* 
  * Lock for reading, clone the allocation into the given pointer, and unlock.
  */
 tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data);
+
+/*
+ * Read the timestamp of the last write to this shared memory into the given pointer. This function
+ * acquires and releases a read lock.
+ */
+tism_result_t _tism_read_timestamp(volatile struct _tism_shared_memory* shm, struct timeval* time);
+
+/*
+ * Get the total number of writes performed on the given shared memory.
+ */
+uint64_t _tism_get_total_writes(volatile struct _tism_shared_memory* shm);
 
 
 /*
