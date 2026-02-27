@@ -109,16 +109,6 @@ class _TismBorrowedSharedMemory:
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
-    def read_timestamp(self) -> datetime:
-        """
-        Read the timestamp of the last write to the allocation. This function
-        locks the allocation for reading.
-        """
-
-        time_ptr = ffi.new("struct timeval*")
-        _raise_tism_error(lib.tism_borrowed_read_timestamp(self._shm, time_ptr))
-        return datetime(year=1970, month=1, day=1, second=time_ptr.tv_sec, microsecond=time_ptr.tv_usec)
-
     def get_total_writes(self) -> int:
         """
         Get the total number of writes made to this allocation. For the purposes

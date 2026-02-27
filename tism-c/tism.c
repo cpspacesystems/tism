@@ -94,6 +94,7 @@ tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, 
 		}
 	}
 
+	shm->last_read_count = 0;
 	shm->allocation = (struct _tism_allocation*)allocation;
 	shm->allocation->data_size = n;
 	shm->allocation->major_version = TISM_MAJOR_VERSION;
@@ -230,10 +231,6 @@ tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* da
 	return _tism_read((struct _tism_shared_memory*)shm, data);
 }
 
-tism_result_t tism_owned_read_timestamp(volatile tism_owned_shared_memory_t* shm, struct timeval* time) {
-	return _tism_read_timestamp((struct _tism_shared_memory*)shm, time);
-}
-
 uint64_t tism_owned_get_total_writes(tism_owned_shared_memory_t* shm) {
 	return _tism_get_total_writes((struct _tism_shared_memory*)shm);
 }
@@ -243,8 +240,12 @@ tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, vo
 	return _tism_read((struct _tism_shared_memory*)shm, data);
 }
 
-tism_result_t tism_borrowed_read_timestamp(volatile tism_borrowed_shared_memory_t* shm, struct timeval* time) {
-	return _tism_read_timestamp((struct _tism_shared_memory*)shm, time);
+bool tism_borrowed_has_changed(tism_borrowed_shared_memory_t* shm) {
+	return _tism_has_changed((struct _tism_shared_memory*)shm);
+}
+
+int64_t tism_borrowed_staleness(tism_borrowed_shared_memory_t* shm) {
+	return _tism_staleness((struct _tism_shared_memory*)shm);
 }
 
 uint64_t tism_borrowed_get_total_writes(tism_borrowed_shared_memory_t* shm) {
@@ -304,14 +305,27 @@ tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data) {
 	return TISM_OK;
 }
 
-tism_result_t _tism_read_timestamp(volatile struct _tism_shared_memory* shm, struct timeval* time) {
-	TISM_MBIND(_tism_read_lock(shm));
-	*time = shm->allocation->timestamp;
-	TISM_MBIND(_tism_unlock(shm));
-	return TISM_OK;
+bool _tism_has_changed(tism_borrowed_shared_memory_t* shm) {
+	return shm->last_read_count < atomic_load(&shm->allocation->total_writes);
 }
 
-uint64_t _tism_get_total_writes(volatile struct _tism_shared_memory* shm) {
+int64_t _tism_staleness(tism_borrowed_shared_memory_t* shm) {
+	if (shm->last_read_count == 0) {
+		return -1;
+	}
+
+	struct timeval now;
+
+	if (gettimeofday(&now, NULL) != 0) {
+		return -1;
+	}
+
+	int64_t seconds_diff = (int64_t)now.tv_sec - (int64_t)shm->last_read_time.tv_sec;
+	int64_t useconds_diff = (int64_t)now.tv_usec - (int64_t)shm->last_read_time.tv_usec;
+	return seconds_diff * 1000 * 1000 + useconds_diff;
+}
+
+uint64_t _tism_get_total_write(struct _tism_shared_memory* shm) {
 	return (uint64_t)shm->allocation->total_writes;
 }
 
@@ -331,10 +345,14 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 }
 
 tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
-	switch (pthread_rwlock_rdlock(&shm->allocation->rw_lock)) {
-		case 0:     return TISM_OK;
-		default:    return TISM_UNKNOWN;
+	if (pthread_rwlock_rdlock(&shm->allocation->rw_lock) != 0) {
+		return TISM_UNKNOWN;
 	}
+
+	shm->last_read_count = shm->allocation->total_writes;
+	shm->last_read_time = shm->allocation->timestamp;
+
+	return TISM_OK;
 }
 
 tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {

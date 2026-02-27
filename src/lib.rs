@@ -283,11 +283,6 @@ impl<T> OwnedSharedMemory<T> {
         self.0.total_writes()
     }
 
-    /// Lock the allocation for reading and get the timestamp of the last write.
-    pub fn read_timestamp(&mut self) -> io::Result<SystemTime> {
-        self.0.last_written_at()
-    }
-
     /// The size of the portion of shared memory allocated for data.
     pub fn allocated_data_size(&self) -> usize {
         unsafe { (*self.0.allocation).data_size }
@@ -327,15 +322,53 @@ impl<T> BorrowedSharedMemory<T> {
         Ok(locked.as_ref().to_owned())
     }
 
+    /// `true` if the allocation has been written to since the last time this process has read it.
+    ///
+    /// This function can be used as a cheap and no-lock way to determine if you want to get new
+    /// data, or if locking the allocation isn't worth doing.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create("shm_has_changed", 12).unwrap();
+    ///
+    /// let mut shm = tism::wait_and_open::<i32>("shm_has_changed").unwrap();
+    ///
+    /// // Initial data which is unread counts as a change!
+    /// assert!(shm.has_changed());
+    ///
+    /// // By reading we clear the change.
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    ///
+    /// // If we perform a write with our owner, then the borrower will see a
+    /// // change:
+    ///
+    /// shm_owner.write(3).unwrap();
+    /// assert!(shm.has_changed());
+    ///
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    ///
+    /// ```
+    pub fn has_changed(&self) -> bool {
+        self.0.has_changed()
+    }
+
+    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
+    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
+    /// _published_, and is partially dependant on the publisher.
+    ///
+    /// This function returns [`None`] if no read has been performed.
+    ///
+    /// [`Duration`]: Duration
+    /// [`None`]: Option::None
+    pub fn staleness(&self) -> Option<Duration> {
+        self.0.staleness()
+    }
+
     /// Get the total number of writes performed on the shared memory. For the purposes of this
     /// function a "write" is one time the read/write lock was locked for writing.
     pub fn total_writes(&self) -> u64 {
         self.0.total_writes()
-    }
-
-    /// Lock the allocation for reading and get the timestamp of the last write.
-    pub fn read_timestamp(&mut self) -> io::Result<SystemTime> {
-        self.0.last_written_at()
     }
 
     /// The size of the portion of shared memory allocated for data.
@@ -450,6 +483,15 @@ impl<'m, T> Drop for ReadLockedSharedMemory<'m, T> {
 struct SharedMemory<T> {
     /// File descriptor of the shared memory.
     pub(crate) fd: libc::c_int,
+
+    /// The total write count at the event of the last read. Since the write count begins at `1` for
+    /// the initial write, this value can be made `0` to consistantly indicate that a read has not
+    /// been made.
+    pub(crate) last_read_count: u64,
+
+    /// The timestamp of the last read write, i.e. what time was the allocation written to to
+    /// produce the data we accessed the last time we read.
+    pub(crate) last_read_time: Option<SystemTime>,
 
     /// The allocation itself, which we should never have our own copy of and will instead only ever
     /// acquire an instance via memory mapping.
@@ -572,7 +614,12 @@ impl<T> SharedMemory<T> {
                 }
             };
 
-            Ok(SharedMemory { fd, allocation })
+            Ok(SharedMemory {
+                fd,
+                last_read_count: 0,
+                last_read_time: None,
+                allocation,
+            })
         }
     }
 
@@ -651,8 +698,30 @@ impl<T> SharedMemory<T> {
                 ));
             }
 
-            Ok(SharedMemory { fd, allocation })
+            Ok(SharedMemory {
+                fd,
+                last_read_count: 0,
+                last_read_time: None,
+                allocation,
+            })
         }
+    }
+
+    /// `true` if the allocation has been written to since the last time this process has read it.
+    fn has_changed(&self) -> bool {
+        self.total_writes() > self.last_read_count
+    }
+
+    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
+    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
+    /// published, and is partially dependant on the publisher.
+    ///
+    /// This function returns [`None`] if no read has been performed.
+    ///
+    /// [`Duration`]: Duration
+    /// [`None`]: Option::None
+    fn staleness(&self) -> Option<Duration> {
+        self.last_read_time.and_then(|t| t.elapsed().ok())
     }
 
     /// Get the total writes field of the shared memory's [`Allocation`].
@@ -663,21 +732,6 @@ impl<T> SharedMemory<T> {
             (*self.allocation)
                 .total_writes
                 .load(atomic::Ordering::SeqCst)
-        }
-    }
-
-    /// Retrieve the timestamp of the last write to the [`Allocation`].
-    ///
-    /// [`Allocation`]: Allocation
-    fn last_written_at(&mut self) -> io::Result<SystemTime> {
-        unsafe {
-            self.read_lock()?;
-            let time = (*self.allocation).timestamp;
-            self.unlock()?;
-
-            Ok(SystemTime::UNIX_EPOCH
-                + Duration::from_secs(time.tv_sec as _)
-                + Duration::from_micros(time.tv_usec as _))
         }
     }
 
@@ -701,11 +755,22 @@ impl<T> SharedMemory<T> {
 
     unsafe fn read_lock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) {
-                0 => Ok(()),
-                e => Err(io::Error::from_raw_os_error(e)),
+            if pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) != 0 {
+                return Err(io::Error::last_os_error());
             }
+
+            let time = (*self.allocation).timestamp;
+
+            self.last_read_time = Some(
+                SystemTime::UNIX_EPOCH
+                    + Duration::from_secs(time.tv_sec as _)
+                    + Duration::from_micros(time.tv_usec as _),
+            );
         }
+
+        self.last_read_count = self.total_writes();
+
+        Ok(())
     }
 
     unsafe fn unlock(&mut self) -> io::Result<()> {

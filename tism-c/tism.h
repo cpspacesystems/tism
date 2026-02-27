@@ -17,6 +17,7 @@
 #define _TISM_H
 
 #include <stddef.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <sys/mman.h>
 
@@ -59,8 +60,10 @@ typedef struct _tism_shared_memory tism_borrowed_shared_memory_t;
  * Common struct for TISM shared memory. Avoid direct use.
  */
 struct _tism_shared_memory {
-	int fd;
-	struct _tism_allocation* allocation;
+	int fd;                               /* File descriptor of the shared memory. */
+	uint64_t last_read_count;             /* The write count at the time of the last read. */
+	struct timeval last_read_time;        /* The write time at the last read. */
+	struct _tism_allocation* allocation;  /* The allocation, which is memory mapped. */
 };
 
 /*
@@ -151,12 +154,6 @@ tism_result_t tism_owned_write(volatile tism_owned_shared_memory_t* shm, const v
 tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* data);
 
 /*
- * Read the timestamp of the last write to this shared memory into the given pointer. This function
- * acquires and releases a read lock.
- */
-tism_result_t tism_owned_read_timestamp(volatile tism_owned_shared_memory_t* shm, struct timeval* time);
-
-/*
  * Get the total number of writes performed on the given shared memory.
  */
 uint64_t tism_owned_get_total_writes(tism_owned_shared_memory_t* shm);
@@ -169,10 +166,17 @@ uint64_t tism_owned_get_total_writes(tism_owned_shared_memory_t* shm);
 tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, void* data);
 
 /*
- * Read the timestamp of the last write to this shared memory into the given pointer. This function
- * acquires and releases a read lock.
+ * Returns true if the allocation has been written to since the last time this process read the
+ * allocation.
  */
-tism_result_t tism_borrowed_read_timestamp(volatile tism_borrowed_shared_memory_t* shm, struct timeval* time);
+bool tism_borrowed_has_changed(tism_borrowed_shared_memory_t* shm);
+
+/*
+ * Get the staleness, in microseconds, of the last read data. This staleness is the time since the
+ * last read data had been written to the allocation. A value of -1 indicates that no read has been
+ * made yet.
+ */
+int64_t tism_borrowed_staleness(tism_borrowed_shared_memory_t* shm);
 
 /*
  * Get the total number of writes performed on the given shared memory.
@@ -224,15 +228,22 @@ tism_result_t _tism_write(volatile struct _tism_shared_memory* shm, const void* 
 tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data);
 
 /*
- * Read the timestamp of the last write to this shared memory into the given pointer. This function
- * acquires and releases a read lock.
+ * Returns true if the allocation has been written to since the last time this process read the
+ * allocation.
  */
-tism_result_t _tism_read_timestamp(volatile struct _tism_shared_memory* shm, struct timeval* time);
+bool _tism_has_changed(tism_borrowed_shared_memory_t* shm);
+
+/*
+ * Get the staleness, in microseconds, of the last read data. This staleness is the time since the
+ * last read data had been written to the allocation. A value of -1 indicates that no read has been
+ * made yet.
+ */
+int64_t _tism_staleness(tism_borrowed_shared_memory_t* shm);
 
 /*
  * Get the total number of writes performed on the given shared memory.
  */
-uint64_t _tism_get_total_writes(volatile struct _tism_shared_memory* shm);
+uint64_t _tism_get_total_writes(struct _tism_shared_memory* shm);
 
 
 /*
