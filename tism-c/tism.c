@@ -325,7 +325,7 @@ int64_t _tism_staleness(tism_borrowed_shared_memory_t* shm) {
 	return seconds_diff * 1000 * 1000 + useconds_diff;
 }
 
-uint64_t _tism_get_total_write(struct _tism_shared_memory* shm) {
+uint64_t _tism_get_total_writes(struct _tism_shared_memory* shm) {
 	return (uint64_t)shm->allocation->total_writes;
 }
 
