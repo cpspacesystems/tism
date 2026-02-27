@@ -17,6 +17,7 @@
 #define _TISM_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <pthread.h>
 #include <sys/mman.h>
@@ -62,8 +63,8 @@ typedef struct _tism_shared_memory tism_borrowed_shared_memory_t;
 struct _tism_shared_memory {
 	int fd;                               /* File descriptor of the shared memory. */
 	uint64_t last_read_count;             /* The write count at the time of the last read. */
-	struct timeval last_read_time;        /* The write time at the last read. */
 	struct _tism_allocation* allocation;  /* The allocation, which is memory mapped. */
+	struct timeval last_read_time;        /* The write time at the last read. */
 };
 
 /*
@@ -167,7 +168,8 @@ tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, vo
 
 /*
  * Returns true if the allocation has been written to since the last time this process read the
- * allocation.
+ * allocation. This does not guarantee that the allocation's data has changed, only that the
+ * allocation has been written to.
  */
 bool tism_borrowed_has_changed(tism_borrowed_shared_memory_t* shm);
 

@@ -18,6 +18,7 @@ bytes will likely just be the raw bytes of the type the allocation is meant to
 store, and Python users should work with their `bytes` as such.
 """
 
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from _tism import ffi, lib
@@ -56,16 +57,6 @@ class _TismOwnedSharedMemory:
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
-
-    def read_timestamp(self) -> datetime:
-        """
-        Read the timestamp of the last write to the allocation. This function
-        locks the allocation for reading.
-        """
-
-        time_ptr = ffi.new("struct timeval*")
-        _raise_tism_error(lib.tism_owned_read_timestamp(self._shm, time_ptr))
-        return datetime(year=1970, month=1, day=1, second=time_ptr.tv_sec, microsecond=time_ptr.tv_usec)
 
     def get_total_writes(self) -> int:
         """
@@ -108,6 +99,35 @@ class _TismBorrowedSharedMemory:
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
+
+    def has_changed(self) -> bool:
+        """
+        Returns `True` if the allocation has been written to since the last time
+        this process has read the allocation. This does not guarantee that the
+        actual data has changed.
+        """
+
+        return lib.tism_borrowed_has_changed(self._shm)
+
+    def staleness_micros(self) -> int:
+        """
+        Gets the staleness of the last read write, as in, the duration since the
+        last write that this process has read, in a whole number of
+        microseconds.
+        """
+
+        now = int(time.time_ns() / 1000)
+        write_time = lib.tism_borrowed_staleness(self._shm)
+        return now - write_time
+
+    def staleness(self) -> float:
+        """
+        Gets the staleness of the last read write, as in, the duration since the
+        last write that this process has read, in fractional seconds. This
+        function cannot exceed microsecond precision.
+        """
+
+        return float(self.staleness_micros()) / 1_000_000.0
 
     def get_total_writes(self) -> int:
         """
