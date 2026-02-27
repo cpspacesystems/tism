@@ -141,7 +141,7 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
-const MAJOR_VERSION: u8 = 0;
+const MAJOR_VERSION: u8 = 1;
 const MINOR_VERSION: u8 = 0;
 const PATCH_VERSION: u16 = 0;
 
