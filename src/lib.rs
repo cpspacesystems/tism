@@ -708,6 +708,8 @@ impl<T> SharedMemory<T> {
     }
 
     /// `true` if the allocation has been written to since the last time this process has read it.
+    /// This does not guarantee that the actual data has changed, only that the allocation has been
+    /// written to.
     fn has_changed(&self) -> bool {
         self.total_writes() > self.last_read_count
     }
