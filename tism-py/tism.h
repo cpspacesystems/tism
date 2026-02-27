@@ -41,8 +41,12 @@ tism_result_t tism_borrowed_close(volatile tism_borrowed_shared_memory_t* shm);
 
 tism_result_t tism_owned_write(volatile tism_owned_shared_memory_t* shm, const void* data);
 tism_result_t tism_owned_read(volatile tism_owned_shared_memory_t* shm, void* data);
+tism_result_t tism_owned_read_timestamp(volatile tism_owned_shared_memory_t* shm, struct timeval* time);
+uint64_t tism_owned_get_total_writes(tism_owned_shared_memory_t* shm);
 
 tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, void* data);
+tism_result_t tism_borrowed_read_timestamp(volatile tism_borrowed_shared_memory_t* shm, struct timeval* time);
+uint64_t tism_borrowed_get_total_writes(tism_borrowed_shared_memory_t* shm);
 
 tism_result_t tism_unsafe_owned_write_lock(volatile tism_owned_shared_memory_t* shm, void** data);
 tism_result_t tism_unsafe_owned_read_lock(volatile tism_owned_shared_memory_t* shm, void** data);
@@ -53,6 +57,8 @@ tism_result_t tism_unsafe_borrowed_unlock(volatile tism_borrowed_shared_memory_t
 
 tism_result_t _tism_write(volatile struct _tism_shared_memory* shm, const void* data);
 tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data);
+tism_result_t _tism_read_timestamp(volatile struct _tism_shared_memory* shm, struct timeval* time);
+uint64_t _tism_get_total_writes(volatile struct _tism_shared_memory* shm);
 
 tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm);
 tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm);

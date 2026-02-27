@@ -36,5 +36,22 @@ class Tests(unittest.TestCase):
         del owner
 
 
+    def test_write_counter(self):
+        shm = tism.create("test_write_counter_shm", bytes([128]))
+
+        self.assertEqual(1, shm.get_total_writes())
+
+        shm.write(bytes([65]))
+
+        self.assertEqual(2, shm.get_total_writes())
+
+        shm.write(bytes([65]))
+        shm.write(bytes([65]))
+
+        self.assertEqual(4, shm.get_total_writes())
+
+        del shm
+
+
 if __name__ == "__main__":
     unittest.main()

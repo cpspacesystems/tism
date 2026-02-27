@@ -19,6 +19,7 @@ store, and Python users should work with their `bytes` as such.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from _tism import ffi, lib
 
 
@@ -56,6 +57,27 @@ class _TismOwnedSharedMemory:
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
+    def read_timestamp(self) -> datetime:
+        """
+        Read the timestamp of the last write to the allocation. This function
+        locks the allocation for reading.
+        """
+
+        time_ptr = ffi.new("struct timeval*")
+        _raise_tism_error(lib.tism_owned_read_timestamp(self._shm, time_ptr))
+        return datetime(year=1970, month=1, day=1, second=time_ptr.tv_sec, microsecond=time_ptr.tv_usec)
+
+    def get_total_writes(self) -> int:
+        """
+        Get the total number of writes made to this allocation. For the purposes
+        of this function, one write is one time that the allocation was locked
+        for writing, even if in the time it was locked it was overwritten
+        multiple times, since a consumer will only see the new data after it is
+        unlocked.
+        """
+
+        return lib.tism_owned_get_total_writes(self._shm)
+
     def __enter__(self):
         return self
 
@@ -86,6 +108,27 @@ class _TismBorrowedSharedMemory:
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
+
+    def read_timestamp(self) -> datetime:
+        """
+        Read the timestamp of the last write to the allocation. This function
+        locks the allocation for reading.
+        """
+
+        time_ptr = ffi.new("struct timeval*")
+        _raise_tism_error(lib.tism_borrowed_read_timestamp(self._shm, time_ptr))
+        return datetime(year=1970, month=1, day=1, second=time_ptr.tv_sec, microsecond=time_ptr.tv_usec)
+
+    def get_total_writes(self) -> int:
+        """
+        Get the total number of writes made to this allocation. For the purposes
+        of this function, one write is one time that the allocation was locked
+        for writing, even if in the time it was locked it was overwritten
+        multiple times, since a consumer will only see the new data after it is
+        unlocked.
+        """
+
+        return lib.tism_borrowed_get_total_writes(self._shm)
 
     def __enter__(self):
         return self
