@@ -116,7 +116,7 @@ class _TismBorrowedSharedMemory:
         microseconds.
         """
 
-        now = int(time.time_ns() / 1000)
+        now = time.time_ns() // 1000
         write_time = lib.tism_borrowed_staleness(self._shm)
         return now - write_time
 
