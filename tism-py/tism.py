@@ -77,6 +77,7 @@ class _TismOwnedSharedMemory:
 
     def __del__(self):
         lib.tism_owned_close(self._shm)
+        self._shm = ffi.cast("void*", 0)
 
 
 @dataclass
@@ -148,6 +149,7 @@ class _TismBorrowedSharedMemory:
 
     def __del__(self):
         lib.tism_borrowed_close(self._shm)
+        self._shm = ffi.cast("void*", 0)
 
 
 def create(name: str, init: bytes) -> _TismOwnedSharedMemory:

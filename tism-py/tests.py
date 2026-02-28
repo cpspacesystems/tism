@@ -24,6 +24,12 @@ class Tests(unittest.TestCase):
         del owner
 
 
+    def test_close(self): 
+        owner = tism.create("test_open_shm", bytes([0xBE, 0xEF]))
+        owner.__del__()
+        owner.__del__()
+
+
     def test_wait_and_open(self):
         owner = tism.create("test_wait_shm", bytes([0xBE, 0xEF]))
         borrower = tism.wait_and_open("test_wait_shm")

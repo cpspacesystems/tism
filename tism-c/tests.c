@@ -134,6 +134,10 @@ SCRUTINY_UNIT_TEST(test_write_counter) {
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
 }
 
+SCRUTINY_UNIT_TEST(test_close) {
+	scrutiny_assert_equal(TISM_OK, _tism_close(NULL));
+}
+
 int main() {
 	scrutiny_test_t tests[] = {
 		test_create,
@@ -142,6 +146,7 @@ int main() {
 		test_unsafe_read,
 		test_unsafe_write,
 		test_write_counter,
+		test_close,
 		NULL
 	};
 

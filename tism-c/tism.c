@@ -364,6 +364,10 @@ tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {
 }
 
 tism_result_t _tism_close(volatile struct _tism_shared_memory* shm) {
+	if (!shm) {
+		return TISM_OK;
+	}
+
 	if (close(shm->fd) != 0) {
 		switch (errno) {
 			case EINTR: return TISM_INTERUPTED;
