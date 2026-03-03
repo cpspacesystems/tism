@@ -21,6 +21,7 @@ store, and Python users should work with their `bytes` as such.
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 from _tism import ffi, lib
 
 
@@ -100,6 +101,19 @@ class _TismBorrowedSharedMemory:
         _raise_tism_error(lib.tism_owned_read(self._shm, value_ptr))
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
+
+    def read_change(self) -> Optional[bytes]:
+        """
+        Optionally read the data in the allocation, depending on whether or not
+        it has changed. If the allocation has been written to since it was last
+        read by this process, this function will return the data from within the
+        allocation.
+        """
+
+        if self.has_changed():
+            return self.read()
+
+        return None
 
     def has_changed(self) -> bool:
         """
@@ -210,4 +224,4 @@ def _create_c_str(s: str):
     Create a C-string from the given python `str`
     """
 
-    return ffi.new("char[]", s.encode())
+    return ffi.new("char[]", (s + '\0').encode())

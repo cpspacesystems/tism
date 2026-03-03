@@ -322,6 +322,50 @@ impl<T> BorrowedSharedMemory<T> {
         Ok(locked.as_ref().to_owned())
     }
 
+    /// Wraps the [`BorrowedSharedMemory::has_changed`] and [`BorrowedSharedMemory::read`]
+    /// functions, returning [`None`] when the allocation has not changes, and returning the value
+    /// of [`BorrowedSharedMemory::read`] when it has. This _emulates_ a more "channel-like"
+    /// behavior.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create("shm_read_change", 12).unwrap();
+    ///
+    /// let mut shm = tism::wait_and_open::<i32>("shm_read_change").unwrap();
+    ///
+    /// if let Some(read_data) = shm.read_change().unwrap() {
+    ///     assert_eq!(read_data, 12);
+    /// } else {
+    ///     // We should have a change to read here.
+    ///     panic!();
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// shm_owner.write(3).unwrap();
+    ///
+    /// match shm.read_change().unwrap() {
+    ///     Some(i) => {
+    ///         assert_eq!(i, 3);
+    ///     }
+    ///
+    ///     None => {
+    ///         // We should have a change.
+    ///         panic!();
+    ///     }
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// ```
+    pub fn read_change(&mut self) -> io::Result<Option<T>>
+    where
+        T: Clone,
+    {
+        if self.has_changed() {
+            Ok(Some(self.read()?))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// `true` if the allocation has been written to since the last time this process has read it.
     ///
     /// This function can be used as a cheap and no-lock way to determine if you want to get new

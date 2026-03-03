@@ -59,5 +59,30 @@ class Tests(unittest.TestCase):
         del shm
 
 
+    def test_has_changed(self):
+        shm = tism.create("test_has_changed_shm", bytes([128]))
+        borrower = tism.open("test_has_changed_shm")
+
+        self.assertEqual(1, shm.get_total_writes())
+        self.assertTrue(borrower.has_changed())
+
+        borrower.read()
+        self.assertFalse(borrower.has_changed())
+
+        shm.write(bytes([65]))
+
+        self.assertEqual(2, shm.get_total_writes())
+
+        shm.write(bytes([65]))
+        shm.write(bytes([65]))
+
+        self.assertEqual(4, shm.get_total_writes())
+
+        self.assertEqual(bytes([65]), borrower.read_change())
+        self.assertEqual(None, borrower.read_change())
+
+        del shm
+
+
 if __name__ == "__main__":
     unittest.main()
