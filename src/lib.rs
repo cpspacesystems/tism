@@ -323,9 +323,8 @@ impl<T> BorrowedSharedMemory<T> {
     }
 
     /// Wraps the [`BorrowedSharedMemory::has_changed`] and [`BorrowedSharedMemory::read`]
-    /// functions, returning [`None`] when the allocation has not changes, and returning the value
-    /// of [`BorrowedSharedMemory::read`] when it has. This _emulates_ a more "channel-like"
-    /// behavior.
+    /// functions, returning [`None`] when the allocation has not changed, and returning the value
+    /// of [`BorrowedSharedMemory::read`] when it has. This emulates a more "channel-like" behavior.
     ///
     /// ```
     /// let mut shm_owner = tism::create("shm_read_change", 12).unwrap();
@@ -368,8 +367,8 @@ impl<T> BorrowedSharedMemory<T> {
 
     /// `true` if the allocation has been written to since the last time this process has read it.
     ///
-    /// This function can be used as a cheap and no-lock way to determine if you want to get new
-    /// data, or if locking the allocation isn't worth doing.
+    /// This function can be used as a cheap and no-lock way of determining if you want to get new
+    /// data or if locking the allocation isn't worth doing.
     ///
     /// ```
     /// let mut shm_owner = tism::create("shm_has_changed", 12).unwrap();
