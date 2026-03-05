@@ -102,7 +102,7 @@ class _TismBorrowedSharedMemory:
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
-    def read_change(self) -> Optional[bytes]:
+    def read_change(self) -> bytes | None:
         """
         Optionally read the data in the allocation, depending on whether or not
         it has changed. If the allocation has been written to since it was last
