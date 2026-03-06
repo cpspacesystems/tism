@@ -152,9 +152,9 @@ pub mod lazy;
 mod tests;
 
 use libc::{
-    self, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR,
-    close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock, pthread_rwlock_t,
-    pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
+    self, CLOCK_MONOTONIC, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR,
+    S_IWGRP, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock,
+    pthread_rwlock_t, pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
 };
 use std::{
     io,
@@ -577,7 +577,7 @@ struct Allocation<T> {
     pub(crate) rw_lock: pthread_rwlock_t,
 
     /// The time that the read/write lock was last locked for writing.
-    pub(crate) timestamp: libc::timeval,
+    pub(crate) timestamp: libc::timespec,
 
     /// The actual shared data.
     pub(crate) data: T,
@@ -786,7 +786,7 @@ impl<T> SharedMemory<T> {
                 return Err(io::Error::last_os_error());
             }
 
-            if libc::gettimeofday(&mut (*self.allocation).timestamp, ptr::null_mut()) != 0 {
+            if libc::clock_gettime(CLOCK_MONOTONIC, &mut (*self.allocation).timestamp) != 0 {
                 return Err(io::Error::last_os_error());
             }
 
@@ -809,7 +809,7 @@ impl<T> SharedMemory<T> {
             self.last_read_time = Some(
                 SystemTime::UNIX_EPOCH
                     + Duration::from_secs(time.tv_sec as _)
-                    + Duration::from_micros(time.tv_usec as _),
+                    + Duration::from_nanos(time.tv_nsec as _),
             );
         }
 

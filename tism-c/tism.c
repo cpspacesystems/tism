@@ -314,15 +314,15 @@ int64_t _tism_staleness(tism_borrowed_shared_memory_t* shm) {
 		return -1;
 	}
 
-	struct timeval now;
+	struct timespec now;
 
-	if (gettimeofday(&now, NULL) != 0) {
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
 		return -1;
 	}
 
 	int64_t seconds_diff = (int64_t)now.tv_sec - (int64_t)shm->last_read_time.tv_sec;
-	int64_t useconds_diff = (int64_t)now.tv_usec - (int64_t)shm->last_read_time.tv_usec;
-	return seconds_diff * 1000 * 1000 + useconds_diff;
+	int64_t nseconds_diff = (int64_t)now.tv_nsec - (int64_t)shm->last_read_time.tv_nsec;
+	return seconds_diff * 1000 * 1000 * 1000 + nseconds_diff;
 }
 
 uint64_t _tism_get_total_writes(struct _tism_shared_memory* shm) {
@@ -335,7 +335,7 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 		return TISM_UNKNOWN;
 	}
 
-	if (gettimeofday(&shm->allocation->timestamp, NULL) != 0) {
+	if (clock_gettime(CLOCK_MONOTONIC, &shm->allocation->timestamp) != 0) {
 		return TISM_UNKNOWN;
 	}
 

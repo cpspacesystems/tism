@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <sys/mman.h>
+#include <time.h>
 
 #define TISM_MAJOR_VERSION 1
 #define TISM_MINOR_VERSION 0
@@ -64,7 +65,7 @@ struct _tism_shared_memory {
 	int fd;                               /* File descriptor of the shared memory. */
 	uint64_t last_read_count;             /* The write count at the time of the last read. */
 	struct _tism_allocation* allocation;  /* The allocation, which is memory mapped. */
-	struct timeval last_read_time;        /* The write time at the last read. */
+	struct timespec last_read_time;        /* The write time at the last read. */
 };
 
 /*
@@ -77,7 +78,7 @@ struct _tism_allocation {
 	uint16_t patch_version;
 	_Atomic uint64_t total_writes;  /* Total number of times written, initialization counts as a write. */
 	pthread_rwlock_t rw_lock;
-	struct timeval timestamp;
+	struct timespec timestamp;
 	char data[];                    /* This field just marks the first byte of data. */
 };
 
