@@ -175,7 +175,7 @@ tism_result_t tism_borrowed_read(volatile tism_borrowed_shared_memory_t* shm, vo
 bool tism_borrowed_has_changed(tism_borrowed_shared_memory_t* shm);
 
 /*
- * Get the staleness, in microseconds, of the last read data. This staleness is the time since the
+ * Get the staleness, in nanoseconds, of the last read data. This staleness is the time since the
  * last read data had been written to the allocation. A value of -1 indicates that no read has been
  * made yet.
  */
@@ -237,7 +237,7 @@ tism_result_t _tism_read(volatile struct _tism_shared_memory* shm, void* data);
 bool _tism_has_changed(tism_borrowed_shared_memory_t* shm);
 
 /*
- * Get the staleness, in microseconds, of the last read data. This staleness is the time since the
+ * Get the staleness, in nanoseconds, of the last read data. This staleness is the time since the
  * last read data had been written to the allocation. A value of -1 indicates that no read has been
  * made yet.
  */
