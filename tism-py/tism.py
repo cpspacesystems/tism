@@ -124,25 +124,22 @@ class _TismBorrowedSharedMemory:
 
         return lib.tism_borrowed_has_changed(self._shm)
 
-    def staleness_micros(self) -> int:
+    def staleness_nanos(self) -> int:
         """
         Gets the staleness of the last read write, as in, the duration since the
-        last write that this process has read, in a whole number of
-        microseconds.
+        last write that this process has read, in a whole number of nanoseconds.
         """
 
-        now = time.time_ns() // 1000
-        write_time = lib.tism_borrowed_staleness(self._shm)
-        return now - write_time
+        return lib.tism_borrowed_staleness(self._shm)
 
     def staleness(self) -> float:
         """
         Gets the staleness of the last read write, as in, the duration since the
         last write that this process has read, in fractional seconds. This
-        function cannot exceed microsecond precision.
+        function cannot exceed nanosecond precision.
         """
 
-        return float(self.staleness_micros()) / 1_000_000.0
+        return float(self.staleness_nanos()) / 1_000_000_000.0
 
     def get_total_writes(self) -> int:
         """
