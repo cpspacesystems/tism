@@ -167,7 +167,8 @@ const TISM_OVERHEAD: usize = size_of::<libc::size_t>() + size_of::<pthread_rwloc
 /// care should be taken not to have two processes call [`tism::create`] with the same name so long
 /// as their usage overlaps.
 ///
-/// See docs on [`tism::OwnedSharedMemory`] for info on how resources are freed.
+/// See docs on [`tism::OwnedSharedMemory`] for info on how resources are freed. Do not including a
+/// leading "/" in the given name.
 ///
 /// [`tism::create`]: create
 /// [`tism::OwnedSharedMemory`]: OwnedSharedMemory

@@ -104,6 +104,8 @@ typedef enum {
  *
  * TISM will save the size you give here, and functions which use the `tism_owned_shared_memory_t`
  * will not take it as a parameter.
+ *
+ * Do not include a leading "/" in the name.
  */
 tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n);
 

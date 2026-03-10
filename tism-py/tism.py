@@ -100,7 +100,7 @@ class _TismBorrowedSharedMemory:
 def create(name: str, init: bytes) -> _TismOwnedSharedMemory:
     """
     Create a new TISM shared memory allocation with the given name and given
-    initial data.
+    initial data. Do not include a leading "/" in the name.
     """
 
     c_str = _create_c_str(name)
