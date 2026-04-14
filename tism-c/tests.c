@@ -58,7 +58,6 @@ SCRUTINY_UNIT_TEST(test_wait_and_open) {
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
 }
 
-#include <stdio.h>
 SCRUTINY_UNIT_TEST(test_unsafe_read) {
 	int init_data = 0;
 	tism_owned_shared_memory_t owner;
@@ -115,6 +114,30 @@ SCRUTINY_UNIT_TEST(test_unsafe_write) {
 	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
 }
 
+SCRUTINY_UNIT_TEST(test_write_counter) {
+	int init_data = 0;
+	tism_owned_shared_memory_t owner;
+	scrutiny_assert_equal(TISM_OK, tism_create(&owner, "test_write_counter_shm", &init_data, sizeof init_data));
+
+	scrutiny_assert_equal(1, tism_owned_get_total_writes(&owner));
+
+	init_data = 300;
+	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &init_data));
+
+	scrutiny_assert_equal(2, tism_owned_get_total_writes(&owner));
+
+	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &init_data));
+	scrutiny_assert_equal(TISM_OK, tism_owned_write(&owner, &init_data));
+
+	scrutiny_assert_equal(4, tism_owned_get_total_writes(&owner));
+
+	scrutiny_assert_equal(TISM_OK, tism_owned_close(&owner));
+}
+
+SCRUTINY_UNIT_TEST(test_close) {
+	scrutiny_assert_equal(TISM_OK, _tism_close(NULL));
+}
+
 int main() {
 	scrutiny_test_t tests[] = {
 		test_create,
@@ -122,6 +145,8 @@ int main() {
 		test_wait_and_open,
 		test_unsafe_read,
 		test_unsafe_write,
+		test_write_counter,
+		test_close,
 		NULL
 	};
 

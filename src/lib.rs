@@ -141,7 +141,7 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
-const MAJOR_VERSION: u8 = 0;
+const MAJOR_VERSION: u8 = 1;
 const MINOR_VERSION: u8 = 0;
 const PATCH_VERSION: u16 = 0;
 
@@ -152,14 +152,20 @@ pub mod lazy;
 mod tests;
 
 use libc::{
-    self, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR, S_IWGRP, S_IWUSR,
-    close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock, pthread_rwlock_t,
-    pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
+    self, CLOCK_MONOTONIC, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR,
+    S_IWGRP, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock,
+    pthread_rwlock_t, pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
 };
-use std::{io, path::Path, ptr};
+use std::{
+    io,
+    path::Path,
+    ptr,
+    sync::atomic::{self, AtomicU64},
+    time::{Duration, SystemTime},
+};
 
 /// The overhead of a tism allocation.
-const TISM_OVERHEAD: usize = size_of::<libc::size_t>() + size_of::<pthread_rwlock_t>();
+const TISM_OVERHEAD: usize = size_of::<Allocation<()>>();
 
 /// Create a new shared memory allocaton, which you will own, initialized to the given value of `T`.
 /// If a shared memory allocation by the given name already exists this is not considered an error,
@@ -272,6 +278,12 @@ impl<T> OwnedSharedMemory<T> {
         Ok(())
     }
 
+    /// Get the total number of writes performed on the shared memory. For the purposes of this
+    /// function a "write" is one time the read/write lock was locked for writing.
+    pub fn total_writes(&self) -> u64 {
+        self.0.total_writes()
+    }
+
     /// The size of the portion of shared memory allocated for data.
     pub fn allocated_data_size(&self) -> usize {
         unsafe { (*self.0.allocation).data_size }
@@ -309,6 +321,98 @@ impl<T> BorrowedSharedMemory<T> {
     {
         let locked = self.read_lock()?;
         Ok(locked.as_ref().to_owned())
+    }
+
+    /// Wraps the [`BorrowedSharedMemory::has_changed`] and [`BorrowedSharedMemory::read`]
+    /// functions, returning [`None`] when the allocation has not changed, and returning the value
+    /// of [`BorrowedSharedMemory::read`] when it has. This emulates a more "channel-like" behavior.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create("shm_read_change", 12).unwrap();
+    ///
+    /// let mut shm = tism::wait_and_open::<i32>("shm_read_change").unwrap();
+    ///
+    /// if let Some(read_data) = shm.read_change().unwrap() {
+    ///     assert_eq!(read_data, 12);
+    /// } else {
+    ///     // We should have a change to read here.
+    ///     panic!();
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// shm_owner.write(3).unwrap();
+    ///
+    /// match shm.read_change().unwrap() {
+    ///     Some(i) => {
+    ///         assert_eq!(i, 3);
+    ///     }
+    ///
+    ///     None => {
+    ///         // We should have a change.
+    ///         panic!();
+    ///     }
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// ```
+    pub fn read_change(&mut self) -> io::Result<Option<T>>
+    where
+        T: Clone,
+    {
+        if self.has_changed() {
+            Ok(Some(self.read()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// `true` if the allocation has been written to since the last time this process has read it.
+    ///
+    /// This function can be used as a cheap and no-lock way of determining if you want to get new
+    /// data or if locking the allocation isn't worth doing.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create("shm_has_changed", 12).unwrap();
+    ///
+    /// let mut shm = tism::wait_and_open::<i32>("shm_has_changed").unwrap();
+    ///
+    /// // Initial data which is unread counts as a change!
+    /// assert!(shm.has_changed());
+    ///
+    /// // By reading we clear the change.
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    ///
+    /// // If we perform a write with our owner, then the borrower will see a
+    /// // change:
+    ///
+    /// shm_owner.write(3).unwrap();
+    /// assert!(shm.has_changed());
+    ///
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    ///
+    /// ```
+    pub fn has_changed(&self) -> bool {
+        self.0.has_changed()
+    }
+
+    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
+    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
+    /// _published_, and is partially dependant on the publisher.
+    ///
+    /// This function returns [`None`] if no read has been performed.
+    ///
+    /// [`Duration`]: Duration
+    /// [`None`]: Option::None
+    pub fn staleness(&self) -> Option<Duration> {
+        self.0.staleness()
+    }
+
+    /// Get the total number of writes performed on the shared memory. For the purposes of this
+    /// function a "write" is one time the read/write lock was locked for writing.
+    pub fn total_writes(&self) -> u64 {
+        self.0.total_writes()
     }
 
     /// The size of the portion of shared memory allocated for data.
@@ -424,14 +528,27 @@ struct SharedMemory<T> {
     /// File descriptor of the shared memory.
     pub(crate) fd: libc::c_int,
 
+    /// The total write count at the event of the last read. Since the write count begins at `1` for
+    /// the initial write, this value can be made `0` to consistantly indicate that a read has not
+    /// been made.
+    pub(crate) last_read_count: u64,
+
+    /// The timestamp of the last read write, i.e. what time was the allocation written to to
+    /// produce the data we accessed the last time we read.
+    pub(crate) last_read_time: Option<SystemTime>,
+
     /// The allocation itself, which we should never have our own copy of and will instead only ever
     /// acquire an instance via memory mapping.
     pub(crate) allocation: *mut Allocation<T>,
 }
 
+/// Layout of the allocation itself. This is whats shared between processes.
 #[repr(C)]
 struct Allocation<T> {
-    /// Size of the data allocation.
+    /// Size of the data allocation. For Rust this is the same as the size of the [`Allocation`]
+    /// struct.
+    ///
+    /// [`Allocation`]: Allocation
     pub(crate) data_size: libc::size_t,
 
     /// Major version of the TISM library used to create the allocation. Mismatched major versions
@@ -446,8 +563,22 @@ struct Allocation<T> {
     /// not produce an error for mismatched patches.
     pub(crate) patch_version: u16,
 
-    /// POSIX read/write lock for syncronization.
+    /// Number of times the [`Allocation`]'s data has been written over. For the purposes of this
+    /// field a "write over" corrosponds to one time in which the read/write lock was locked for
+    /// writing, so if the publisher process writes multiple times in a single lock, we only count
+    /// it once since there would be no way for a consuming process to see that intermediary write.
+    ///
+    /// The initialization of the allocation with its first value counts as a write.
+    ///
+    /// [`Allocation`]: Allocation
+    pub(crate) total_writes: AtomicU64,
+
+    /// POSIX read/write lock for syncronization. This lock should be used for access to _both_ the
+    /// `data` _and_ `timestamp`.
     pub(crate) rw_lock: pthread_rwlock_t,
+
+    /// The time that the read/write lock was last locked for writing.
+    pub(crate) timestamp: libc::timespec,
 
     /// The actual shared data.
     pub(crate) data: T,
@@ -458,7 +589,7 @@ impl<T> SharedMemory<T> {
     const SHARED_MEMORY_SIZE: usize = TISM_OVERHEAD + size_of::<T>();
 
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
-    /// because it does not initialize the allocation.
+    /// because it does not initialize the allocation's data or timestamp.
     ///
     /// If a shared memory allocation by the given name already exists, it is deallocated before
     /// creating a new allocation.
@@ -518,6 +649,7 @@ impl<T> SharedMemory<T> {
             (*allocation).major_version = MAJOR_VERSION;
             (*allocation).minor_version = MINOR_VERSION;
             (*allocation).patch_version = PATCH_VERSION;
+            (*allocation).total_writes = AtomicU64::new(0);
 
             match pthread_rwlock_init(&raw mut (*allocation).rw_lock, ptr::null()) {
                 0 => (),
@@ -526,7 +658,12 @@ impl<T> SharedMemory<T> {
                 }
             };
 
-            Ok(SharedMemory { fd, allocation })
+            Ok(SharedMemory {
+                fd,
+                last_read_count: 0,
+                last_read_time: None,
+                allocation,
+            })
         }
     }
 
@@ -605,26 +742,81 @@ impl<T> SharedMemory<T> {
                 ));
             }
 
-            Ok(SharedMemory { fd, allocation })
+            Ok(SharedMemory {
+                fd,
+                last_read_count: 0,
+                last_read_time: None,
+                allocation,
+            })
+        }
+    }
+
+    /// `true` if the allocation has been written to since the last time this process has read it.
+    /// This does not guarantee that the actual data has changed, only that the allocation has been
+    /// written to.
+    fn has_changed(&self) -> bool {
+        self.total_writes() > self.last_read_count
+    }
+
+    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
+    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
+    /// published, and is partially dependant on the publisher.
+    ///
+    /// This function returns [`None`] if no read has been performed.
+    ///
+    /// [`Duration`]: Duration
+    /// [`None`]: Option::None
+    fn staleness(&self) -> Option<Duration> {
+        self.last_read_time.and_then(|t| t.elapsed().ok())
+    }
+
+    /// Get the total writes field of the shared memory's [`Allocation`].
+    ///
+    /// [`Allocation`]: Allocation
+    fn total_writes(&self) -> u64 {
+        unsafe {
+            (*self.allocation)
+                .total_writes
+                .load(atomic::Ordering::SeqCst)
         }
     }
 
     unsafe fn write_lock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_wrlock(&raw mut (*self.allocation).rw_lock) {
-                0 => Ok(()),
-                e => Err(io::Error::from_raw_os_error(e)),
+            if pthread_rwlock_wrlock(&raw mut (*self.allocation).rw_lock) != 0 {
+                return Err(io::Error::last_os_error());
             }
+
+            if libc::clock_gettime(CLOCK_MONOTONIC, &mut (*self.allocation).timestamp) != 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            let _ = (*self.allocation)
+                .total_writes
+                .fetch_add(1, atomic::Ordering::SeqCst);
+
+            Ok(())
         }
     }
 
     unsafe fn read_lock(&mut self) -> io::Result<()> {
         unsafe {
-            match pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) {
-                0 => Ok(()),
-                e => Err(io::Error::from_raw_os_error(e)),
+            if pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) != 0 {
+                return Err(io::Error::last_os_error());
             }
+
+            let time = (*self.allocation).timestamp;
+
+            self.last_read_time = Some(
+                SystemTime::UNIX_EPOCH
+                    + Duration::from_secs(time.tv_sec as _)
+                    + Duration::from_nanos(time.tv_nsec as _),
+            );
         }
+
+        self.last_read_count = self.total_writes();
+
+        Ok(())
     }
 
     unsafe fn unlock(&mut self) -> io::Result<()> {

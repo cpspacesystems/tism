@@ -84,3 +84,14 @@ fn test_dynamic_open() {
     assert_eq!(size_of::<i32>(), owner.allocated_data_size());
     assert_eq!(size_of::<i32>(), borrower.allocated_data_size());
 }
+
+#[test]
+fn test_write_counter() {
+    let mut owner = tism::create("test_write_lock_shm", 0).unwrap();
+    assert_eq!(owner.total_writes(), 1);
+    owner.write(3).unwrap();
+    assert_eq!(owner.total_writes(), 2);
+    owner.write(9).unwrap();
+    owner.write(9).unwrap();
+    assert_eq!(owner.total_writes(), 4);
+}

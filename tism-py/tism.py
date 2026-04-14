@@ -18,7 +18,10 @@ bytes will likely just be the raw bytes of the type the allocation is meant to
 store, and Python users should work with their `bytes` as such.
 """
 
+import time
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
 from _tism import ffi, lib
 
 
@@ -56,6 +59,17 @@ class _TismOwnedSharedMemory:
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
+    def get_total_writes(self) -> int:
+        """
+        Get the total number of writes made to this allocation. For the purposes
+        of this function, one write is one time that the allocation was locked
+        for writing, even if in the time it was locked it was overwritten
+        multiple times, since a consumer will only see the new data after it is
+        unlocked.
+        """
+
+        return lib.tism_owned_get_total_writes(self._shm)
+
     def __enter__(self):
         return self
 
@@ -64,6 +78,7 @@ class _TismOwnedSharedMemory:
 
     def __del__(self):
         lib.tism_owned_close(self._shm)
+        self._shm = ffi.cast("void*", 0)
 
 
 @dataclass
@@ -87,6 +102,56 @@ class _TismBorrowedSharedMemory:
         buf = ffi.buffer(value_ptr, self._shm.allocation.data_size)
         return bytes(buf)
 
+    def read_change(self) -> bytes | None:
+        """
+        Optionally read the data in the allocation, depending on whether or not
+        it has changed. If the allocation has been written to since it was last
+        read by this process, this function will return the data from within the
+        allocation.
+        """
+
+        if self.has_changed():
+            return self.read()
+
+        return None
+
+    def has_changed(self) -> bool:
+        """
+        Returns `True` if the allocation has been written to since the last time
+        this process has read the allocation. This does not guarantee that the
+        actual data has changed.
+        """
+
+        return lib.tism_borrowed_has_changed(self._shm)
+
+    def staleness_nanos(self) -> int:
+        """
+        Gets the staleness of the last read write, as in, the duration since the
+        last write that this process has read, in a whole number of nanoseconds.
+        """
+
+        return lib.tism_borrowed_staleness(self._shm)
+
+    def staleness(self) -> float:
+        """
+        Gets the staleness of the last read write, as in, the duration since the
+        last write that this process has read, in fractional seconds. This
+        function cannot exceed nanosecond precision.
+        """
+
+        return float(self.staleness_nanos()) / 1_000_000_000.0
+
+    def get_total_writes(self) -> int:
+        """
+        Get the total number of writes made to this allocation. For the purposes
+        of this function, one write is one time that the allocation was locked
+        for writing, even if in the time it was locked it was overwritten
+        multiple times, since a consumer will only see the new data after it is
+        unlocked.
+        """
+
+        return lib.tism_borrowed_get_total_writes(self._shm)
+
     def __enter__(self):
         return self
 
@@ -95,6 +160,7 @@ class _TismBorrowedSharedMemory:
 
     def __del__(self):
         lib.tism_borrowed_close(self._shm)
+        self._shm = ffi.cast("void*", 0)
 
 
 def create(name: str, init: bytes) -> _TismOwnedSharedMemory:
@@ -155,4 +221,4 @@ def _create_c_str(s: str):
     Create a C-string from the given python `str`
     """
 
-    return ffi.new("char[]", s.encode())
+    return ffi.new("char[]", (s + '\0').encode())
