@@ -141,7 +141,7 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
-const MAJOR_VERSION: u8 = 1;
+const MAJOR_VERSION: u8 = 2;
 const MINOR_VERSION: u8 = 0;
 const PATCH_VERSION: u16 = 0;
 
@@ -160,7 +160,7 @@ use std::{
     io,
     path::Path,
     ptr,
-    sync::atomic::{self, AtomicU64},
+    sync::atomic::{self, AtomicBool, AtomicU64},
     time::{Duration, SystemTime},
 };
 
@@ -391,7 +391,6 @@ impl<T> BorrowedSharedMemory<T> {
     ///
     /// let _ = shm.read().unwrap();
     /// assert!(!shm.has_changed());
-    ///
     /// ```
     pub fn has_changed(&self) -> bool {
         self.0.has_changed()
@@ -573,6 +572,11 @@ struct Allocation<T> {
     /// [`Allocation`]: Allocation
     pub(crate) total_writes: AtomicU64,
 
+    /// Whether or not the [`Allocation`] is a zombie, i.e. has no publisher.
+    ///
+    /// [`Allocation`]: Allocation
+    pub(crate) is_zombie: AtomicBool,
+
     /// POSIX read/write lock for syncronization. This lock should be used for access to _both_ the
     /// `data` _and_ `timestamp`.
     pub(crate) rw_lock: pthread_rwlock_t,
@@ -650,6 +654,7 @@ impl<T> SharedMemory<T> {
             (*allocation).minor_version = MINOR_VERSION;
             (*allocation).patch_version = PATCH_VERSION;
             (*allocation).total_writes = AtomicU64::new(0);
+            (*allocation).is_zombie = AtomicBool::new(false);
 
             match pthread_rwlock_init(&raw mut (*allocation).rw_lock, ptr::null()) {
                 0 => (),
@@ -742,6 +747,13 @@ impl<T> SharedMemory<T> {
                 ));
             }
 
+            if (*allocation).is_zombie.load(atomic::Ordering::Acquire) {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Allocation is a zombie",
+                ));
+            }
+
             Ok(SharedMemory {
                 fd,
                 last_read_count: 0,
@@ -825,6 +837,16 @@ impl<T> SharedMemory<T> {
                 0 => Ok(()),
                 e => Err(io::Error::from_raw_os_error(e)),
             }
+        }
+    }
+}
+
+impl<T> Drop for OwnedSharedMemory<T> {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.0.allocation)
+                .is_zombie
+                .store(true, atomic::Ordering::Release);
         }
     }
 }

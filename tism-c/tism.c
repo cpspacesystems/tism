@@ -182,6 +182,10 @@ tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name)
 		return TISM_VERSION_MISMATCH;
 	}
 
+	if (atomic_load(&tism_allocation->is_zombie)) {
+		return TISM_IS_ZOMBIE;
+	}
+
 	munmap(allocation, sizeof(struct _tism_allocation));
 
 	allocation = mmap(
@@ -202,19 +206,20 @@ tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name)
 	}
  
 	shm->allocation = (struct _tism_allocation*)allocation;
-
+	atomic_store(&shm->allocation->is_zombie, false);
 	return TISM_OK;
 }
 
 tism_result_t tism_wait_and_open(volatile tism_borrowed_shared_memory_t* shm, char* name) {
 	tism_result_t res = TISM_OK;
 	
-	while ((res = tism_open(shm, name)) == TISM_DOES_NOT_EXIST);
+	while ((res = tism_open(shm, name)) == TISM_DOES_NOT_EXIST || res == TISM_IS_ZOMBIE);
 
 	return res;
 }
 
 tism_result_t tism_owned_close(volatile tism_owned_shared_memory_t* shm) {
+	atomic_store(&shm->allocation->is_zombie, true);
 	return _tism_close((struct _tism_shared_memory*)shm);
 }
 

@@ -23,7 +23,7 @@
 #include <sys/mman.h>
 #include <time.h>
 
-#define TISM_MAJOR_VERSION 1
+#define TISM_MAJOR_VERSION 2
 #define TISM_MINOR_VERSION 0
 #define TISM_PATCH_VERSION 0
 
@@ -77,6 +77,7 @@ struct _tism_allocation {
 	uint8_t minor_version;
 	uint16_t patch_version;
 	_Atomic uint64_t total_writes;  /* Total number of times written, initialization counts as a write. */
+	_Atomic bool is_zombie;         /* Whether or not allocation is a zombie, i.e. publisher closed. */
 	pthread_rwlock_t rw_lock;
 	struct timespec timestamp;
 	char data[];                    /* This field just marks the first byte of data. */
@@ -98,6 +99,7 @@ typedef enum {
 	TISM_TOO_BIG, 		   /* Required allocation exceeds system maximum. */
 	TISM_VERSION_MISMATCH, /* Attempted to open an allocaton with a mismatched major version. */
     TISM_DOES_NOT_EXIST,   /* An allocation by the given name does not exist. */
+    TISM_IS_ZOMBIE,        /* An allocation by the given name exists but is a zombie. */
 
 	TISM_UNKNOWN,  /* An unknown error occured. */
 } tism_result_t;
@@ -124,7 +126,7 @@ tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, 
 tism_result_t tism_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
 
 /*
- * Like `open` but will retry until the allocation exists.
+ * Like `open` but will retry until the allocation exists and is not a zombie.
  */
 tism_result_t tism_wait_and_open(volatile tism_borrowed_shared_memory_t* shm, char* name);
 
