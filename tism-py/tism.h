@@ -19,6 +19,7 @@ struct _tism_allocation {
 	uint8_t minor_version;
 	uint16_t patch_version;
 	_Atomic uint64_t total_writes;
+	_Atomic bool is_zombie;
 	char data[];
 };
 

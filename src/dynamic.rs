@@ -8,16 +8,15 @@
 //!
 //! [`tism`]: crate
 
-use crate::{Allocation, MAJOR_VERSION};
-use libc::{O_RDWR, close, munmap, pthread_rwlock_rdlock, pthread_rwlock_unlock, shm_open};
-use std::{io, path::Path, ptr, slice};
+use crate::{OpenMode, SharedMemory};
+use std::{io, path::Path, slice, time::Duration};
 
 /// Open a shared memory allocation for reading with an unknown size. When reading from this
 /// allocation [`tism`] will look up the size of the data in the header of the allocation.
 ///
 /// [`tism`]: crate
 pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
-    let shm = SharedMemory::open(name)?;
+    let shm = SharedMemory::open(name, OpenMode::Dynamic)?;
     Ok(DynamicBorrowedSharedMemory(shm))
 }
 
@@ -27,7 +26,7 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
 /// out of the allocation instead of a generic type.
 ///
 /// [`tism::BorrowedSharedMemory`]: crate::BorrowedSharedMemory
-pub struct DynamicBorrowedSharedMemory(SharedMemory);
+pub struct DynamicBorrowedSharedMemory(SharedMemory<u8>);
 
 impl DynamicBorrowedSharedMemory {
     /// Read the shared memory, getting a [`Vec`] of `u8` bytes
@@ -49,113 +48,96 @@ impl DynamicBorrowedSharedMemory {
         }
     }
 
+    /// Wraps the [`BorrowedSharedMemory::has_changed`] and [`BorrowedSharedMemory::read`]
+    /// functions, returning [`None`] when the allocation has not changed, and returning the value
+    /// of [`BorrowedSharedMemory::read`] when it has. This emulates a more "channel-like" behavior.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create::<[u8; 1]>("dyn_read_change", [12u8]).unwrap();
+    ///
+    /// let mut shm = tism::dynamic::open("dyn_read_change").unwrap();
+    ///
+    /// if let Some(read_data) = shm.read_change().unwrap() {
+    ///     assert_eq!(read_data, [12u8]);
+    /// } else {
+    ///     // We should have a change to read here.
+    ///     panic!();
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// shm_owner.write([3u8]).unwrap();
+    ///
+    /// match shm.read_change().unwrap() {
+    ///     Some(i) => {
+    ///         assert_eq!(i, [3u8]);
+    ///     }
+    ///
+    ///     None => {
+    ///         // We should have a change.
+    ///         panic!();
+    ///     }
+    /// }
+    ///
+    /// assert_eq!(None, shm.read_change().unwrap());
+    /// ```
+    pub fn read_change(&mut self) -> io::Result<Option<Vec<u8>>> {
+        if self.has_changed() {
+            Ok(Some(self.read()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// `true` if the allocation has been written to since the last time this process has read it.
+    ///
+    /// This function can be used as a cheap and no-lock way of determining if you want to get new
+    /// data or if locking the allocation isn't worth doing.
+    ///
+    /// ```
+    /// let mut shm_owner = tism::create::<[u8; 1]>("dyn_has_changed", [12u8]).unwrap();
+    ///
+    /// let mut shm = tism::dynamic::open("dyn_has_changed").unwrap();
+    ///
+    /// // Initial data which is unread counts as a change!
+    /// assert!(shm.has_changed());
+    ///
+    /// // By reading we clear the change.
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    ///
+    /// // If we perform a write with our owner, then the borrower will see a
+    /// // change:
+    ///
+    /// shm_owner.write([3u8]).unwrap();
+    /// assert!(shm.has_changed());
+    ///
+    /// let _ = shm.read().unwrap();
+    /// assert!(!shm.has_changed());
+    /// ```
+    pub fn has_changed(&self) -> bool {
+        self.0.has_changed()
+    }
+
+    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
+    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
+    /// _published_, and is partially dependant on the publisher.
+    ///
+    /// This function returns [`None`] if no read has been performed.
+    ///
+    /// [`Duration`]: Duration
+    /// [`None`]: Option::None
+    pub fn staleness(&self) -> Option<Duration> {
+        self.0.staleness()
+    }
+
+    /// Get the total number of writes performed on the shared memory. For the purposes of this
+    /// function a "write" is one time the read/write lock was locked for writing.
+    pub fn total_writes(&self) -> u64 {
+        self.0.total_writes()
+    }
+
     /// The size of the portion of shared memory allocated for data.
     pub fn allocated_data_size(&self) -> usize {
         unsafe { (*self.0.allocation).data_size }
-    }
-}
-
-struct SharedMemory {
-    /// File descriptor of the shared memory.
-    pub(crate) fd: libc::c_int,
-
-    /// The allocation itself.
-    pub(crate) allocation: *mut Allocation<u8>,
-}
-
-impl SharedMemory {
-    fn open(name: impl AsRef<Path>) -> io::Result<SharedMemory> {
-        let name_bytes = name.as_ref().as_os_str().as_encoded_bytes();
-        let mut name_bytes = name_bytes.to_vec();
-        name_bytes.push(0);
-
-        #[cfg(target_os = "macos")]
-        name_bytes.insert(0, '/' as _);
-
-        // For some notes on the inner workings here see `SharedMemory::create`.
-
-        unsafe {
-            let c_str = name_bytes.as_ptr() as *const libc::c_char;
-
-            #[cfg(target_os = "macos")]
-            let fd = shm_open(c_str, O_RDWR);
-            #[cfg(target_os = "linux")]
-            let fd = shm_open(c_str, O_RDWR, 0);
-
-            if fd < 0 {
-                return Err(io::Error::last_os_error());
-            }
-
-            let allocation = libc::mmap(
-                ptr::null_mut(),
-                size_of::<libc::size_t>(),
-                libc::PROT_WRITE | libc::PROT_READ,
-                libc::MAP_SHARED,
-                fd,
-                0,
-            );
-
-            if allocation == libc::MAP_FAILED {
-                return Err(io::Error::last_os_error());
-            }
-
-            let data_size = *(allocation as *const libc::size_t);
-
-            munmap(allocation, size_of::<libc::size_t>());
-
-            let allocation = libc::mmap(
-                ptr::null_mut(),
-                crate::TISM_OVERHEAD + data_size,
-                libc::PROT_WRITE | libc::PROT_READ,
-                libc::MAP_SHARED,
-                fd,
-                0,
-            );
-
-            if allocation == libc::MAP_FAILED {
-                return Err(io::Error::last_os_error());
-            }
-
-            let allocation = allocation as *mut Allocation<u8>;
-
-            if (*allocation).major_version != MAJOR_VERSION {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "TISM major version mismatch",
-                ));
-            }
-
-            Ok(SharedMemory { fd, allocation })
-        }
-    }
-
-    unsafe fn read_lock(&mut self) -> io::Result<()> {
-        unsafe {
-            match pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) {
-                0 => Ok(()),
-                e => Err(io::Error::from_raw_os_error(e)),
-            }
-        }
-    }
-
-    unsafe fn unlock(&mut self) -> io::Result<()> {
-        unsafe {
-            match pthread_rwlock_unlock(&raw mut (*self.allocation).rw_lock) {
-                0 => Ok(()),
-                e => Err(io::Error::from_raw_os_error(e)),
-            }
-        }
-    }
-}
-
-impl Drop for SharedMemory {
-    fn drop(&mut self) {
-        unsafe {
-            close(self.fd);
-            munmap(
-                &raw mut (*self.allocation).rw_lock as _,
-                crate::TISM_OVERHEAD + (*self.allocation).data_size,
-            );
-        }
     }
 }

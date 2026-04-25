@@ -24,7 +24,7 @@
 #include <time.h>
 
 #define TISM_MAJOR_VERSION 2
-#define TISM_MINOR_VERSION 0
+#define TISM_MINOR_VERSION 1
 #define TISM_PATCH_VERSION 0
 
 /*

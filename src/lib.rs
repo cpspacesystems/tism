@@ -142,7 +142,7 @@
 //! [`Sized`]: Sized
 
 const MAJOR_VERSION: u8 = 2;
-const MINOR_VERSION: u8 = 0;
+const MINOR_VERSION: u8 = 1;
 const PATCH_VERSION: u16 = 0;
 
 pub mod dynamic;
@@ -203,7 +203,7 @@ pub fn create<T>(name: impl AsRef<Path>, init: T) -> io::Result<OwnedSharedMemor
 /// [`tism`]: crate
 /// [`Err`]: Result::Err
 pub fn open<T>(name: impl AsRef<Path>) -> io::Result<BorrowedSharedMemory<T>> {
-    let shm = SharedMemory::open(name)?;
+    let shm = SharedMemory::open(name, OpenMode::FixedSize)?;
     Ok(BorrowedSharedMemory(shm))
 }
 
@@ -213,7 +213,7 @@ pub fn open<T>(name: impl AsRef<Path>) -> io::Result<BorrowedSharedMemory<T>> {
 /// [`tism::open`]: open
 pub fn wait_and_open<T>(name: impl AsRef<Path>) -> io::Result<BorrowedSharedMemory<T>> {
     loop {
-        match SharedMemory::open(name.as_ref()) {
+        match SharedMemory::open(name.as_ref(), OpenMode::FixedSize) {
             Ok(shm) => return Ok(BorrowedSharedMemory(shm)),
 
             Err(io_err) => match io_err.kind() {
@@ -521,6 +521,19 @@ impl<'m, T> Drop for ReadLockedSharedMemory<'m, T> {
     }
 }
 
+/// Whether or not we already know the size of the memory we want to open.
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+enum OpenMode {
+    /// Open shared memory without knowledge of its size, produces no errors if the size of the
+    /// given type parameter has a size mismatch with the allocation under the assumption that it
+    /// is a stand in or phantom data.
+    Dynamic,
+
+    /// Open shared memory with the expectation that the allocation matches the size of the type
+    /// parameter.
+    FixedSize,
+}
+
 /// Opaque type holding the pointer to both a mutex for syncronization and the data we are concerned
 /// with sharing with other processes.
 struct SharedMemory<T> {
@@ -675,7 +688,7 @@ impl<T> SharedMemory<T> {
     /// Open _but do not create_ a [`SharedMemory`] pointing to `T`.
     ///
     /// [`SharedMemory`]: SharedMemory
-    fn open(name: impl AsRef<Path>) -> io::Result<SharedMemory<T>> {
+    fn open(name: impl AsRef<Path>, mode: OpenMode) -> io::Result<SharedMemory<T>> {
         let name_bytes = name.as_ref().as_os_str().as_encoded_bytes();
         let mut name_bytes = name_bytes.to_vec();
         name_bytes.push(0);
@@ -712,7 +725,8 @@ impl<T> SharedMemory<T> {
 
             let data_size = *(allocation as *const libc::size_t);
 
-            if Self::SHARED_MEMORY_SIZE != TISM_OVERHEAD + data_size {
+            if Self::SHARED_MEMORY_SIZE != TISM_OVERHEAD + data_size && mode == OpenMode::FixedSize
+            {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
