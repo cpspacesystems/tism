@@ -20,6 +20,24 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
     Ok(DynamicBorrowedSharedMemory(shm))
 }
 
+/// Open a shared memory allocation for reading with an unknown size, trying repeatedly until the
+/// allocation becomes available. When reading from this allocation [`tism`] will look up the size
+/// of the data in the header of the allocation.
+///
+/// [`tism`]: crate
+pub fn wait_and_open<T>(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
+    loop {
+        match SharedMemory::open(name.as_ref(), OpenMode::FixedSize) {
+            Ok(shm) => return Ok(DynamicBorrowedSharedMemory(shm)),
+
+            Err(io_err) => match io_err.kind() {
+                io::ErrorKind::NotFound => continue,
+                _ => return Err(io_err),
+            },
+        }
+    }
+}
+
 /// A shared memory allocation which is open for reading (like with [`tism::BorrowedSharedMemory`])
 /// but without a size known ahead of time. This type can be used to interact with allocations of an
 /// unkown size, but as a cost for this we work in a less type-ful setting, and must take raw bytes
