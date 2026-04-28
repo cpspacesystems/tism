@@ -25,7 +25,7 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
 /// of the data in the header of the allocation.
 ///
 /// [`tism`]: crate
-pub fn wait_and_open<T>(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
+pub fn wait_and_open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
     loop {
         match SharedMemory::open(name.as_ref(), OpenMode::FixedSize) {
             Ok(shm) => return Ok(DynamicBorrowedSharedMemory(shm)),
