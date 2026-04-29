@@ -27,7 +27,7 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
 /// [`tism`]: crate
 pub fn wait_and_open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
     loop {
-        match SharedMemory::open(name.as_ref(), OpenMode::FixedSize) {
+        match SharedMemory::open(name.as_ref(), OpenMode::Dynamic) {
             Ok(shm) => return Ok(DynamicBorrowedSharedMemory(shm)),
 
             Err(io_err) => match io_err.kind() {
