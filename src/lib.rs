@@ -802,7 +802,7 @@ impl<T> SharedMemory<T> {
 
             let allocation = libc::mmap(
                 ptr::null_mut(),
-                TISM_OVERHEAD + size,
+                Self::SHARED_MEMORY_SIZE,
                 libc::PROT_WRITE | libc::PROT_READ,
                 libc::MAP_SHARED,
                 self.fd,
