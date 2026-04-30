@@ -809,8 +809,6 @@ impl<T> SharedMemory<T> {
                 0,
             );
 
-            (*self.allocation).data_size = size;
-
             if allocation == libc::MAP_FAILED {
                 return Err(io::Error::last_os_error());
             }
