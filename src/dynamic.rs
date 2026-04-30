@@ -20,15 +20,6 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
     Ok(DynamicBorrowedSharedMemory(shm))
 }
 
-/// Create a custom sized [`DynamicOwnedSharedMemory`].
-///
-/// [`DynamicOwnedSharedMemory`]: DynamicOwnedSharedMemory
-pub fn create(name: impl AsRef<Path>, size: usize) -> io::Result<DynamicOwnedSharedMemory> {
-    let mut shm = unsafe { SharedMemory::create(name)? };
-    unsafe { shm.resize(size)? }
-    Ok(DynamicOwnedSharedMemory(shm))
-}
-
 /// Open a shared memory allocation for reading with an unknown size, trying repeatedly until the
 /// allocation becomes available. When reading from this allocation [`tism`] will look up the size
 /// of the data in the header of the allocation.
@@ -54,9 +45,6 @@ pub fn wait_and_open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedShared
 ///
 /// [`tism::BorrowedSharedMemory`]: crate::BorrowedSharedMemory
 pub struct DynamicBorrowedSharedMemory(SharedMemory<u8>);
-
-/// Shared memory created with a constant size, but which can be determined at runtime.
-pub struct DynamicOwnedSharedMemory(SharedMemory<u8>);
 
 impl DynamicBorrowedSharedMemory {
     /// Read the shared memory, getting a [`Vec`] of `u8` bytes
@@ -144,92 +132,6 @@ impl DynamicBorrowedSharedMemory {
     /// let _ = shm.read().unwrap();
     /// assert!(!shm.has_changed());
     /// ```
-    pub fn has_changed(&self) -> bool {
-        self.0.has_changed()
-    }
-
-    /// Gets the [`Duration`] since the last read data had been written to the allocation. This is
-    /// _not_ the time since the last read, it is the time since the data _from_ the last read was
-    /// _published_, and is partially dependant on the publisher.
-    ///
-    /// This function returns [`None`] if no read has been performed.
-    ///
-    /// [`Duration`]: Duration
-    /// [`None`]: Option::None
-    pub fn staleness(&self) -> Option<Duration> {
-        self.0.staleness()
-    }
-
-    /// Get the total number of writes performed on the shared memory. For the purposes of this
-    /// function a "write" is one time the read/write lock was locked for writing.
-    pub fn total_writes(&self) -> u64 {
-        self.0.total_writes()
-    }
-
-    /// The size of the portion of shared memory allocated for data.
-    pub fn allocated_data_size(&self) -> usize {
-        unsafe { (*self.0.allocation).data_size }
-    }
-}
-
-impl DynamicOwnedSharedMemory {
-    /// Write the given [`Vec`] to the alloction. If the [`Vec`] is oversized then only as much as
-    /// will fit is written. If undersized then not the whole allocation is overwritten.
-    ///
-    /// [`Vec`]: Vec
-    pub fn write(&mut self, mut data: Vec<u8>) -> io::Result<()> {
-        let shm = &mut self.0;
-
-        unsafe {
-            shm.write_lock()?;
-
-            libc::memcpy(
-                &raw mut (*shm.allocation).data as _,
-                data.as_mut_slice().as_mut_ptr_range().start as _,
-                (*shm.allocation).data_size.min(data.len()),
-            );
-
-            shm.unlock()?;
-        }
-
-        Ok(())
-    }
-
-    /// Read the shared memory, getting a [`Vec`] of `u8` bytes
-    ///
-    /// [`Vec`]: Vec
-    pub fn read(&mut self) -> io::Result<Vec<u8>> {
-        let shm = &mut self.0;
-
-        unsafe {
-            shm.read_lock()?;
-
-            let slice =
-                slice::from_raw_parts(&raw mut (*shm.allocation).data, (*shm.allocation).data_size);
-            let vec = slice.to_vec();
-
-            shm.unlock()?;
-
-            Ok(vec)
-        }
-    }
-
-    /// Wraps the [`DynamicOwnedSharedMemory::has_changed`] and [`DynamicOwnedSharedMemory::read`]
-    /// functions, returning [`None`] when the allocation has not changed, and returning the value
-    /// of [`DynamicOwnedSharedMemory::read`] when it has. This emulates a more "channel-like"
-    /// behavior.
-    pub fn read_change(&mut self) -> io::Result<Option<Vec<u8>>> {
-        if self.has_changed() {
-            Ok(Some(self.read()?))
-        } else {
-            Ok(None)
-        }
-    }
-
-    /// `true` if the allocation has been written to since the last time this process has read it.
-    ///
-    /// This function can be used as a cheap and no-lock way of determining if you want to get new
-    /// data or if locking the allocation isn't worth doing.
     pub fn has_changed(&self) -> bool {
         self.0.has_changed()
     }
