@@ -9,7 +9,7 @@
 //! [`tism`]: crate
 
 use crate::{OpenMode, SharedMemory};
-use std::{io, path::Path, slice, sync::atomic::AtomicBool, time::Duration};
+use std::{io, path::Path, slice, time::Duration};
 
 /// Open a shared memory allocation for reading with an unknown size. When reading from this
 /// allocation [`tism`] will look up the size of the data in the header of the allocation.
@@ -24,13 +24,8 @@ pub fn open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedSharedMemory> {
 ///
 /// [`DynamicOwnedSharedMemory`]: DynamicOwnedSharedMemory
 pub fn create(name: impl AsRef<Path>, size: usize) -> io::Result<DynamicOwnedSharedMemory> {
-    let mut shm = unsafe { SharedMemory::create_as_zombie(name)? };
-
-    unsafe {
-        shm.resize(size)?;
-        (*shm.allocation).is_zombie = AtomicBool::new(true);
-    }
-
+    let mut shm = unsafe { SharedMemory::create(name)? };
+    unsafe { shm.resize(size)? }
     Ok(DynamicOwnedSharedMemory(shm))
 }
 
