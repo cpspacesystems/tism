@@ -777,6 +777,36 @@ impl<T> SharedMemory<T> {
         }
     }
 
+    /// Resize the underlying allocation. This function is marked unsafe because it can truncate
+    /// existing data or break open allocations.
+    unsafe fn resize(&mut self, size: usize) -> io::Result<()> {
+        unsafe {
+            munmap(
+                &raw mut (*self.allocation).rw_lock as _,
+                Self::SHARED_MEMORY_SIZE,
+            );
+
+            if ftruncate(self.fd, (TISM_OVERHEAD + size) as i64) < 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            let allocation = libc::mmap(
+                ptr::null_mut(),
+                Self::SHARED_MEMORY_SIZE,
+                libc::PROT_WRITE | libc::PROT_READ,
+                libc::MAP_SHARED,
+                self.fd,
+                0,
+            );
+
+            if allocation == libc::MAP_FAILED {
+                return Err(io::Error::last_os_error());
+            }
+        }
+
+        Ok(())
+    }
+
     /// `true` if the allocation has been written to since the last time this process has read it.
     /// This does not guarantee that the actual data has changed, only that the allocation has been
     /// written to.
