@@ -611,6 +611,16 @@ impl<T> SharedMemory<T> {
     /// If a shared memory allocation by the given name already exists, it is deallocated before
     /// creating a new allocation.
     unsafe fn create(name: impl AsRef<Path>) -> io::Result<SharedMemory<T>> {
+        let shm = unsafe { SharedMemory::create_as_zombie(name)? };
+
+        unsafe {
+            (*shm.allocation).is_zombie = AtomicBool::new(true);
+        }
+
+        Ok(shm)
+    }
+
+    unsafe fn create_as_zombie(name: impl AsRef<Path>) -> io::Result<SharedMemory<T>> {
         let oflags = O_CREAT | O_RDWR | O_TRUNC | O_EXCL;
         let mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
         let name_bytes = name.as_ref().as_os_str().as_encoded_bytes();
@@ -667,7 +677,7 @@ impl<T> SharedMemory<T> {
             (*allocation).minor_version = MINOR_VERSION;
             (*allocation).patch_version = PATCH_VERSION;
             (*allocation).total_writes = AtomicU64::new(0);
-            (*allocation).is_zombie = AtomicBool::new(false);
+            (*allocation).is_zombie = AtomicBool::new(true);
 
             match pthread_rwlock_init(&raw mut (*allocation).rw_lock, ptr::null()) {
                 0 => (),
