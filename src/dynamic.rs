@@ -73,7 +73,7 @@ impl OwnedDynamicSharedMemory {
         unsafe {
             let alloc = &(*shm.allocation);
 
-            if data.len() == alloc.data_size {
+            if data.len() != alloc.data_size {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
