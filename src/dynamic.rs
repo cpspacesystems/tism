@@ -11,6 +11,12 @@
 use crate::{OpenMode, SharedMemory};
 use std::{io, path::Path, slice, time::Duration};
 
+/// Create a lazy shared memory allocation with a dynamic size.
+pub fn create(name: impl AsRef<Path>, size: usize) -> io::Result<OwnedDynamicSharedMemory> {
+    let shm = unsafe { SharedMemory::create_with_size(name, size)? };
+    Ok(OwnedDynamicSharedMemory(shm))
+}
+
 /// Open a shared memory allocation for reading with an unknown size. When reading from this
 /// allocation [`tism`] will look up the size of the data in the header of the allocation.
 ///
@@ -38,6 +44,13 @@ pub fn wait_and_open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedShared
     }
 }
 
+/// Owned shared memory, which has a data size determined at runtime rather than by a fixed type
+/// variable. This is a counterpart to [`tism::OwnedSharedMemory`], but rather than deriving the
+/// size of the allocation from a type parameter, it is explicitly given when created.
+///
+/// [`tism::OwnedSharedMemory`]: tism::OwnedSharedMemory
+pub struct OwnedDynamicSharedMemory(SharedMemory<u8>);
+
 /// A shared memory allocation which is open for reading (like with [`tism::BorrowedSharedMemory`])
 /// but without a size known ahead of time. This type can be used to interact with allocations of an
 /// unkown size, but as a cost for this we work in a less type-ful setting, and must take raw bytes
@@ -45,6 +58,47 @@ pub fn wait_and_open(name: impl AsRef<Path>) -> io::Result<DynamicBorrowedShared
 ///
 /// [`tism::BorrowedSharedMemory`]: crate::BorrowedSharedMemory
 pub struct DynamicBorrowedSharedMemory(SharedMemory<u8>);
+
+impl OwnedDynamicSharedMemory {
+    /// Write the given raw data (as a [`Vec`] of `u8`) to the [`OwnedDynamicSharedMemory`]. The
+    /// length of the given [`Vec`] must match the data size of the allocation, if it does not an
+    /// [`Err`] is returned.
+    ///
+    /// [`Vec`]: Vec
+    /// [`Err`]: Err
+    /// [`OwnedDynamicSharedMemory`]: OwnedDynamicSharedMemory
+    pub fn write(&mut self, data: Vec<u8>) -> io::Result<()> {
+        let shm = &mut self.0;
+
+        unsafe {
+            let alloc = &(*shm.allocation);
+
+            if data.len() == alloc.data_size {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                        "Given `Vec` and `OwnedDynamicSharedMemory` have incompatable sizes ({} vs {})",
+                        data.len(),
+                        alloc.data_size
+                    ),
+                ));
+            }
+
+            shm.write_lock()?;
+
+            let slice = std::slice::from_raw_parts_mut(
+                &raw mut (*shm.allocation).data,
+                (*shm.allocation).data_size,
+            );
+
+            slice.copy_from_slice(data.as_slice());
+
+            shm.unlock()?;
+        };
+
+        Ok(())
+    }
+}
 
 impl DynamicBorrowedSharedMemory {
     /// Read the shared memory, getting a [`Vec`] of `u8` bytes

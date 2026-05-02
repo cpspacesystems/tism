@@ -38,7 +38,7 @@
 //!
 //! [`tism`]: crate
 
-use crate::{OwnedSharedMemory, SharedMemory};
+use crate::OwnedSharedMemory;
 use std::io;
 use std::path::Path;
 
@@ -169,31 +169,5 @@ where
             Self::Allocated(shm) => shm.write(value),
             Self::Unallocated(_) => self.allocate(value),
         }
-    }
-}
-
-pub fn create_owned_sized(name: impl AsRef<Path>, size: usize) -> io::Result<LazyOwnedSizedSharedMemory> {
-    let shm = unsafe { SharedMemory::create_with_size(name, size) }?;
-    Ok(LazyOwnedSizedSharedMemory(shm))
-}
-
-pub struct LazyOwnedSizedSharedMemory(SharedMemory<u8>);
-
-impl LazyOwnedSizedSharedMemory{
-    pub fn write(&mut self, data: Vec<u8>) -> io::Result<()> {
-        let shm = &mut self.0;
-        unsafe {
-            let alloc = &(*shm.allocation);
-            assert!(data.len() == alloc.data_size);
-            shm.write_lock()?;
-
-            let slice=
-                std::slice::from_raw_parts_mut(&raw mut (*shm.allocation).data, (*shm.allocation).data_size);
-            slice.copy_from_slice(data.as_slice());
-
-            shm.unlock()?;
-        };
-
-        Ok(())
     }
 }

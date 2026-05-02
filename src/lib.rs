@@ -602,9 +602,6 @@ struct Allocation<T> {
 }
 
 impl<T> SharedMemory<T> {
-    /// Net size of the shared memory allocation such that it may contain our data and a lock.
-    // const SHARED_MEMORY_SIZE: usize = TISM_OVERHEAD + size_of::<T>();
-
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation's data or timestamp.
     ///
@@ -614,7 +611,11 @@ impl<T> SharedMemory<T> {
         unsafe { Self::create_with_size(name, size_of::<T>()) }
     }
 
-    unsafe fn create_with_size(name: impl AsRef<Path>, data_size: usize) -> io::Result<SharedMemory<T>> {
+    /// Create a new allocation with the given data size.
+    unsafe fn create_with_size(
+        name: impl AsRef<Path>,
+        data_size: usize,
+    ) -> io::Result<SharedMemory<T>> {
         let shared_memory_size = TISM_OVERHEAD + data_size;
 
         let oflags = O_CREAT | O_RDWR | O_TRUNC | O_EXCL;
@@ -730,9 +731,10 @@ impl<T> SharedMemory<T> {
             }
 
             let data_size = *(allocation as *const libc::size_t);
-
             let expected_shared_memory_size = TISM_OVERHEAD + size_of::<T>();
-            if expected_shared_memory_size != TISM_OVERHEAD + data_size && mode == OpenMode::FixedSize
+
+            if expected_shared_memory_size != TISM_OVERHEAD + data_size
+                && mode == OpenMode::FixedSize
             {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
