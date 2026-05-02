@@ -602,15 +602,22 @@ struct Allocation<T> {
 }
 
 impl<T> SharedMemory<T> {
-    /// Net size of the shared memory allocation such that it may contain our data and a lock.
-    const SHARED_MEMORY_SIZE: usize = TISM_OVERHEAD + size_of::<T>();
-
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation's data or timestamp.
     ///
     /// If a shared memory allocation by the given name already exists, it is deallocated before
     /// creating a new allocation.
     unsafe fn create(name: impl AsRef<Path>) -> io::Result<SharedMemory<T>> {
+        unsafe { Self::create_with_size(name, size_of::<T>()) }
+    }
+
+    /// Create a new allocation with the given data size.
+    unsafe fn create_with_size(
+        name: impl AsRef<Path>,
+        data_size: usize,
+    ) -> io::Result<SharedMemory<T>> {
+        let shared_memory_size = TISM_OVERHEAD + data_size;
+
         let oflags = O_CREAT | O_RDWR | O_TRUNC | O_EXCL;
         let mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
         let name_bytes = name.as_ref().as_os_str().as_encoded_bytes();
@@ -643,14 +650,14 @@ impl<T> SharedMemory<T> {
             }
 
             // Truncate the "file" to the correct size.
-            if ftruncate(fd, Self::SHARED_MEMORY_SIZE as i64) < 0 {
+            if ftruncate(fd, shared_memory_size as i64) < 0 {
                 return Err(io::Error::last_os_error());
             }
 
             // Map the "file" to a new memory address.
             let allocation = libc::mmap(
                 ptr::null_mut(),
-                Self::SHARED_MEMORY_SIZE,
+                shared_memory_size,
                 libc::PROT_WRITE | libc::PROT_READ,
                 libc::MAP_SHARED,
                 fd,
@@ -662,7 +669,7 @@ impl<T> SharedMemory<T> {
             }
 
             let allocation = allocation as *mut Allocation<T>;
-            (*allocation).data_size = size_of::<T>();
+            (*allocation).data_size = data_size;
             (*allocation).major_version = MAJOR_VERSION;
             (*allocation).minor_version = MINOR_VERSION;
             (*allocation).patch_version = PATCH_VERSION;
@@ -724,14 +731,16 @@ impl<T> SharedMemory<T> {
             }
 
             let data_size = *(allocation as *const libc::size_t);
+            let expected_shared_memory_size = TISM_OVERHEAD + size_of::<T>();
 
-            if Self::SHARED_MEMORY_SIZE != TISM_OVERHEAD + data_size && mode == OpenMode::FixedSize
+            if expected_shared_memory_size != TISM_OVERHEAD + data_size
+                && mode == OpenMode::FixedSize
             {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
                         "Expected ({}) and actual size ({}) of allocation do not match",
-                        Self::SHARED_MEMORY_SIZE,
+                        expected_shared_memory_size,
                         TISM_OVERHEAD + data_size
                     ),
                 ));
@@ -871,7 +880,7 @@ impl<T> Drop for SharedMemory<T> {
             close(self.fd);
             munmap(
                 &raw mut (*self.allocation).rw_lock as _,
-                Self::SHARED_MEMORY_SIZE,
+                (*self.allocation).data_size + TISM_OVERHEAD,
             );
         }
     }
