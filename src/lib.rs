@@ -153,8 +153,9 @@ mod tests;
 
 use libc::{
     self, CLOCK_MONOTONIC, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR,
-    S_IWGRP, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_rdlock,
-    pthread_rwlock_t, pthread_rwlock_unlock, pthread_rwlock_wrlock, shm_open,
+    S_IWGRP, S_IWOTH, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init,
+    pthread_rwlock_rdlock, pthread_rwlock_t, pthread_rwlock_unlock, pthread_rwlock_wrlock,
+    shm_open,
 };
 use std::{
     io,
@@ -619,7 +620,7 @@ impl<T> SharedMemory<T> {
         let shared_memory_size = TISM_OVERHEAD + data_size;
 
         let oflags = O_CREAT | O_RDWR | O_TRUNC | O_EXCL;
-        let mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+        let mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
         let name_bytes = name.as_ref().as_os_str().as_encoded_bytes();
         let mut name_bytes = name_bytes.to_vec();
         name_bytes.push(0);
