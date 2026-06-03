@@ -409,6 +409,15 @@ impl<T> BorrowedSharedMemory<T> {
         self.0.staleness()
     }
 
+    /// Get the [`Instant`] at which the last read data was published. This timestamp is read from
+    /// the allocation each time the allocation is locked by this process, which occurs any time you
+    /// read the allocation.
+    ///
+    /// [`Instant`]: Instant
+    pub fn last_read_at(&self) -> Option<Instant> {
+        self.0.last_read_time
+    }
+
     /// Get the total number of writes performed on the shared memory. For the purposes of this
     /// function a "write" is one time the read/write lock was locked for writing.
     pub fn total_writes(&self) -> u64 {

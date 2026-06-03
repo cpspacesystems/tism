@@ -9,7 +9,12 @@
 //! [`tism`]: crate
 
 use crate::{OpenMode, SharedMemory};
-use std::{io, path::Path, slice, time::Duration};
+use std::{
+    io,
+    path::Path,
+    slice,
+    time::{Duration, Instant},
+};
 
 /// Create a lazy shared memory allocation with a dynamic size.
 pub fn create(name: impl AsRef<Path>, size: usize) -> io::Result<OwnedDynamicSharedMemory> {
@@ -200,6 +205,15 @@ impl DynamicBorrowedSharedMemory {
     /// [`None`]: Option::None
     pub fn staleness(&self) -> Option<Duration> {
         self.0.staleness()
+    }
+
+    /// Get the [`Instant`] at which the last read data was published. This timestamp is read from
+    /// the allocation each time the allocation is locked by this process, which occurs any time you
+    /// read the allocation.
+    ///
+    /// [`Instant`]: Instant
+    pub fn last_read_at(&self) -> Option<Instant> {
+        self.0.last_read_time
     }
 
     /// Get the total number of writes performed on the shared memory. For the purposes of this
