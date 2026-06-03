@@ -158,11 +158,11 @@ use libc::{
     shm_open,
 };
 use std::{
-    io,
+    io, mem,
     path::Path,
     ptr,
     sync::atomic::{self, AtomicBool, AtomicU64},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant},
 };
 
 /// The overhead of a tism allocation.
@@ -548,7 +548,7 @@ struct SharedMemory<T> {
 
     /// The timestamp of the last read write, i.e. what time was the allocation written to to
     /// produce the data we accessed the last time we read.
-    pub(crate) last_read_time: Option<SystemTime>,
+    pub(crate) last_read_time: Option<Instant>,
 
     /// The allocation itself, which we should never have our own copy of and will instead only ever
     /// acquire an instance via memory mapping.
@@ -803,7 +803,7 @@ impl<T> SharedMemory<T> {
     /// [`Duration`]: Duration
     /// [`None`]: Option::None
     fn staleness(&self) -> Option<Duration> {
-        self.last_read_time.and_then(|t| t.elapsed().ok())
+        self.last_read_time.map(|t| t.elapsed())
     }
 
     /// Get the total writes field of the shared memory's [`Allocation`].
@@ -843,11 +843,7 @@ impl<T> SharedMemory<T> {
 
             let time = (*self.allocation).timestamp;
 
-            self.last_read_time = Some(
-                SystemTime::UNIX_EPOCH
-                    + Duration::from_secs(time.tv_sec as _)
-                    + Duration::from_nanos(time.tv_nsec as _),
-            );
+            self.last_read_time = Some(mem::transmute(time));
         }
 
         self.last_read_count = self.total_writes();
