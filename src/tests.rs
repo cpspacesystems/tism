@@ -53,7 +53,7 @@ fn test_read_lock() {
 #[test]
 fn test_write_lock() {
     let mut owner = tism::create("test_write_lock_shm", 0).unwrap();
-    let mut borrower = tism::open::<i32>("test_write_lock_shm").unwrap();
+    let mut borrower = tism::wait_and_open::<i32>("test_write_lock_shm").unwrap();
 
     assert_eq!(0, borrower.read().unwrap());
 
