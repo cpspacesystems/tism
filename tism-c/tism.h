@@ -31,14 +31,29 @@
  * Monadic-bind like operation for `tism_result_t`. Returns early if the result is an error, and
  * continues execution as normal if it is `TISM_OK`.
  */
+
+#ifdef TISM_DEBUG
+
+#define TISM_MBIND(expr) { \
+    tism_result_t err = expr; \
+    if (err != TISM_OK) { \
+        fprintf(stderr, "TISM_MBIND called on error: %d\n", err); \
+        return err; \
+    } \
+}
+
+#else
+
 #define TISM_MBIND(expr) { tism_result_t err = expr; if (err != TISM_OK) { return err; } }
+
+#endif  /* TISM_DEBUG */
 
 #if defined(__APPLE__)
 #include <sys/posix_shm.h>
 /* minus one for null terminator, minus one for leading slash */
 #define TISM_MAX_NAME_LENGTH (PSHMNAMLEN - 2)
 #elif defined(__linux__)
-/* minux one for null terminator, though length here is arbitrary */
+/* minus one for null terminator, though length here is arbitrary */
 #define TISM_MAX_NAME_LENGTH 255
 #endif
 
