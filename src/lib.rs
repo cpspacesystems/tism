@@ -154,8 +154,7 @@ mod tests;
 use libc::{
     self, CLOCK_MONOTONIC, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR,
     S_IWGRP, S_IWOTH, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_t,
-    pthread_rwlock_tryrdlock, pthread_rwlock_trywrlock, pthread_rwlock_unlock,
-    pthread_rwlock_wrlock, shm_open,
+    pthread_rwlock_tryrdlock, pthread_rwlock_trywrlock, pthread_rwlock_unlock, shm_open,
 };
 use std::{
     io, mem,
