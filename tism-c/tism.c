@@ -336,6 +336,10 @@ uint64_t _tism_get_total_writes(struct _tism_shared_memory* shm) {
 
 
 tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
+#ifdef TISM_DEBUG
+		printf("TISM attempting write lock ...\n");
+#endif  /* TISM_DEBUG */
+
 	if (pthread_rwlock_wrlock(&shm->allocation->rw_lock) != 0) {
 #ifdef TISM_DEBUG
 		fprintf(stderr, "TISM failed to acquire write lock!\n");
@@ -357,6 +361,10 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 }
 
 tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
+#ifdef TISM_DEBUG
+		printf("TISM attempting read lock ...\n");
+#endif  /* TISM_DEBUG */
+
 	if (pthread_rwlock_rdlock(&shm->allocation->rw_lock) != 0) {
 #ifdef TISM_DEBUG
 		fprintf(stderr, "TISM failed to acquire read lock!\n");
@@ -375,6 +383,10 @@ tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
 }
 
 tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {
+#ifdef TISM_DEBUG
+		printf("TISM attempting unlock ....\n");
+#endif  /* TISM_DEBUG */
+
 	switch (pthread_rwlock_unlock(&shm->allocation->rw_lock)) {
 		case 0:
 #ifdef TISM_DEBUG
@@ -382,8 +394,17 @@ tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {
 #endif  /* TISM_DEBUG */
 			return TISM_OK;
 
-		case EPERM: return TISM_BAD_PERMISSIONS;
-		default:    return TISM_UNKNOWN;
+		case EPERM:
+#ifdef TISM_DEBUG
+		fprintf(stderr, "TISM failed to unlock!\n");
+#endif  /* TISM_DEBUG */
+			return TISM_BAD_PERMISSIONS;
+
+		default:
+#ifdef TISM_DEBUG
+		fprintf(stderr, "TISM failed to unlock!\n");
+#endif  /* TISM_DEBUG */
+			return TISM_UNKNOWN;
 	}
 }
 
