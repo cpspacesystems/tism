@@ -13,6 +13,10 @@
 #define CREATE_FLAGS (O_CREAT | O_RDWR | O_TRUNC | O_EXCL)
 #define CREATE_MODE  (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH)
 
+#ifndef SLEEP_TIME_US
+#define SLEEP_TIME_US 100
+#endif  /* SLEEP_TIME_US */
+
 tism_result_t tism_create(volatile tism_owned_shared_memory_t* shm, char* name, const void* data, size_t n) {
 	if (strlen(name) > TISM_MAX_NAME_LENGTH) {
 		return TISM_INVALID_ARGUMENT;
@@ -349,11 +353,19 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 	printf("TISM attempting write lock ...\n");
 #endif  /* TISM_DEBUG */
 
-	if (pthread_rwlock_wrlock(&shm->allocation->rw_lock) != 0) {
+retry_wrlock:
+	switch (pthread_rwlock_trywrlock(&shm->allocation->rw_lock)) {
+		case 0: break;
+
+		case EBUSY:
+			usleep(SLEEP_TIME_US);
+			goto retry_wrlock;
+
+		default:
 #ifdef TISM_DEBUG
-		fprintf(stderr, "TISM failed to acquire write lock!\n");
+			fprintf(stderr, "TISM failed to acquire write lock!\n");
 #endif  /* TISM_DEBUG */
-		return TISM_UNKNOWN;
+			return TISM_UNKNOWN;
 	}
 
 #ifdef TISM_DEBUG
@@ -380,11 +392,19 @@ tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
 	}
 #endif  /* TISM_DEBUG */
 
-	if (pthread_rwlock_rdlock(&shm->allocation->rw_lock) != 0) {
+retry_rdlock:
+	switch (pthread_rwlock_tryrdlock(&shm->allocation->rw_lock)) {
+		case 0: break;
+
+		case EBUSY:
+			usleep(SLEEP_TIME_US);
+			goto retry_rdlock;
+
+		default:
 #ifdef TISM_DEBUG
-		fprintf(stderr, "TISM failed to acquire read lock!\n");
+			fprintf(stderr, "TISM failed to acquire read lock!\n");
 #endif  /* TISM_DEBUG */
-		return TISM_UNKNOWN;
+			return TISM_UNKNOWN;
 	}
 
 #ifdef TISM_DEBUG

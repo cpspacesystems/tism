@@ -141,8 +141,8 @@
 //! [`BorrowedSharedMemory`]: BorrowedSharedMemory
 //! [`Sized`]: Sized
 
-const MAJOR_VERSION: u8 = 2;
-const MINOR_VERSION: u8 = 1;
+const MAJOR_VERSION: u8 = 3;
+const MINOR_VERSION: u8 = 0;
 const PATCH_VERSION: u16 = 0;
 
 pub mod dynamic;
@@ -153,9 +153,9 @@ mod tests;
 
 use libc::{
     self, CLOCK_MONOTONIC, ENOENT, O_CREAT, O_EXCL, O_RDWR, O_TRUNC, S_IRGRP, S_IROTH, S_IRUSR,
-    S_IWGRP, S_IWOTH, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init,
-    pthread_rwlock_rdlock, pthread_rwlock_t, pthread_rwlock_unlock, pthread_rwlock_wrlock,
-    shm_open,
+    S_IWGRP, S_IWOTH, S_IWUSR, close, ftruncate, munmap, pthread_rwlock_init, pthread_rwlock_t,
+    pthread_rwlock_tryrdlock, pthread_rwlock_trywrlock, pthread_rwlock_unlock,
+    pthread_rwlock_wrlock, shm_open,
 };
 use std::{
     io, mem,
@@ -612,6 +612,9 @@ struct Allocation<T> {
 }
 
 impl<T> SharedMemory<T> {
+    /// Microsecond count to sleep between retries to acquire a lock.
+    const SLEEP_TIME_US: libc::useconds_t = 100;
+
     /// Create a new allocation of shared memory for a value of `T`. This function is marked unsafe
     /// because it does not initialize the allocation's data or timestamp.
     ///
@@ -828,8 +831,19 @@ impl<T> SharedMemory<T> {
 
     unsafe fn write_lock(&mut self) -> io::Result<()> {
         unsafe {
-            if pthread_rwlock_wrlock(&raw mut (*self.allocation).rw_lock) != 0 {
-                return Err(io::Error::last_os_error());
+            loop {
+                match pthread_rwlock_trywrlock(&raw mut (*self.allocation).rw_lock) {
+                    0 => break,
+
+                    libc::EBUSY => {
+                        libc::usleep(Self::SLEEP_TIME_US);
+                        continue;
+                    }
+
+                    e => {
+                        return Err(io::Error::from_raw_os_error(e));
+                    }
+                }
             }
 
             if libc::clock_gettime(CLOCK_MONOTONIC, &mut (*self.allocation).timestamp) != 0 {
@@ -846,8 +860,19 @@ impl<T> SharedMemory<T> {
 
     unsafe fn read_lock(&mut self) -> io::Result<()> {
         unsafe {
-            if pthread_rwlock_rdlock(&raw mut (*self.allocation).rw_lock) != 0 {
-                return Err(io::Error::last_os_error());
+            loop {
+                match pthread_rwlock_tryrdlock(&raw mut (*self.allocation).rw_lock) {
+                    0 => break,
+
+                    libc::EBUSY => {
+                        libc::usleep(Self::SLEEP_TIME_US);
+                        continue;
+                    }
+
+                    e => {
+                        return Err(io::Error::from_raw_os_error(e));
+                    }
+                }
             }
 
             let time = (*self.allocation).timestamp;
