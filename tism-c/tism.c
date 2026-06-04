@@ -335,9 +335,18 @@ uint64_t _tism_get_total_writes(struct _tism_shared_memory* shm) {
 }
 
 
+#ifdef TISM_DEBUG
+static unsigned int active_locks = 0;
+#endif  /* TISM_DEBUG */
+
 tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 #ifdef TISM_DEBUG
-		printf("TISM attempting write lock ...\n");
+	if (active_locks > 0) {
+		fprintf(stderr, "TISM attempted to lock twice!\n");
+		return TISM_UNKNOWN;
+	}
+	
+	printf("TISM attempting write lock ...\n");
 #endif  /* TISM_DEBUG */
 
 	if (pthread_rwlock_wrlock(&shm->allocation->rw_lock) != 0) {
@@ -348,6 +357,7 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 	}
 
 #ifdef TISM_DEBUG
+	active_locks++;
 	printf("TISM acquired write lock ...\n");
 #endif  /* TISM_DEBUG */
 
@@ -362,7 +372,12 @@ tism_result_t _tism_write_lock(volatile struct _tism_shared_memory* shm) {
 
 tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
 #ifdef TISM_DEBUG
-		printf("TISM attempting read lock ...\n");
+	printf("TISM attempting read lock ...\n");
+
+	if (active_locks > 0) {
+		fprintf(stderr, "TISM attempted to lock twice!\n");
+		return TISM_UNKNOWN;
+	}
 #endif  /* TISM_DEBUG */
 
 	if (pthread_rwlock_rdlock(&shm->allocation->rw_lock) != 0) {
@@ -373,6 +388,7 @@ tism_result_t _tism_read_lock(volatile struct _tism_shared_memory* shm) {
 	}
 
 #ifdef TISM_DEBUG
+	active_locks++;
 	printf("TISM acquired read lock ...\n");
 #endif  /* TISM_DEBUG */
 
@@ -391,6 +407,7 @@ tism_result_t _tism_unlock(volatile struct _tism_shared_memory* shm) {
 		case 0:
 #ifdef TISM_DEBUG
 			printf("TISM unlocked.\n");
+			active_locks--;
 #endif  /* TISM_DEBUG */
 			return TISM_OK;
 
